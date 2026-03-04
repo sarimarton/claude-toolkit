@@ -52,10 +52,17 @@ fi
 # ── Read usage data ──────────────────────────────────────
 
 pct=$(json_num pct)
-mins_left=$(json_num mins_left)
+reset_ts=$(json_num reset_ts)
 error=$(json_str error)
 phase=$(json_str phase)
 ts=$(json_num ts)
+
+# Compute mins_left dynamically from reset_ts (always accurate, unlike a stale snapshot)
+mins_left=""
+if [[ -n "$reset_ts" ]]; then
+    mins_left=$(( (reset_ts - $(date +%s)) / 60 ))
+    (( mins_left < 0 )) && mins_left=0
+fi
 
 # ── Color helpers ────────────────────────────────────────
 # SwiftBar ansi=true supports basic 16-color ANSI only (not 24-bit true color)

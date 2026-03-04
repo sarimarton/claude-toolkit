@@ -27,15 +27,15 @@ write_phase() {
     [ -n "$pj" ] && pj+=","
     pj+="\"$p\""
   done
-  # Carry forward cached pct/mins_left from the existing file
-  local prev_pct="" prev_mins=""
+  # Carry forward cached pct/reset_ts from the existing file
+  local prev_pct="" prev_reset=""
   if [ -f "$USAGE_FILE" ]; then
     prev_pct=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct',''))" 2>/dev/null)
-    prev_mins=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('mins_left',''))" 2>/dev/null)
+    prev_reset=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('reset_ts',''))" 2>/dev/null)
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
-  [ -n "$prev_mins" ] && extra+="\"mins_left\":$prev_mins,"
+  [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
   printf '{%s"phase":"%s","phases":[%s],"ts":%d}\n' "$extra" "$1" "$pj" "$(date +%s)" > "$USAGE_FILE"
 }
 
@@ -53,15 +53,15 @@ write_error_with_diag() {
   if [ -n "$diag" ]; then
     diag_json=$(printf '%s' "$diag" | python3 -c 'import sys,json; print(json.dumps([l.rstrip() for l in sys.stdin.read().split("\n") if l.strip()]))')
   fi
-  # Carry forward cached pct/mins_left (stale-while-revalidate)
-  local prev_pct="" prev_mins=""
+  # Carry forward cached pct/reset_ts (stale-while-revalidate)
+  local prev_pct="" prev_reset=""
   if [ -f "$USAGE_FILE" ]; then
     prev_pct=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct',''))" 2>/dev/null)
-    prev_mins=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('mins_left',''))" 2>/dev/null)
+    prev_reset=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('reset_ts',''))" 2>/dev/null)
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
-  [ -n "$prev_mins" ] && extra+="\"mins_left\":$prev_mins,"
+  [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
   printf '{%s"error":"%s","phases":[%s],"diag":%s,"ts":%d}\n' "$extra" "$error" "$pj" "$diag_json" "$(date +%s)" > "$USAGE_FILE"
   exit 1
 }
@@ -162,8 +162,8 @@ lines = sys.stdin.read().split("\n")
 phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
 result = {"ts": int(time.time()), "phases": phases}
 
-def parse_reset_time(text):
-    """Parse "Resets 4pm" or "Resets 4:30pm" and return mins_left."""
+def parse_reset_ts(text):
+    """Parse "Resets 4pm" or "Resets 4:30pm" and return epoch timestamp of next reset."""
     m = re.search(r"Resets (\d+)(?::(\d+))?(am|pm)", text)
     if not m:
         return None
@@ -176,9 +176,9 @@ def parse_reset_time(text):
     reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if reset <= now:
         if (now - reset).total_seconds() < 600:
-            return 0
+            return int(reset.timestamp())
         reset += timedelta(days=1)
-    return int((reset - now).total_seconds() / 60)
+    return int(reset.timestamp())
 
 for i, line in enumerate(lines):
     match = re.search(r"(\d+)% used", line)
@@ -193,13 +193,16 @@ for i, line in enumerate(lines):
             break
     if "session" not in label.lower():
         continue
-    result["pct"] = pct
     # Search up to 6 lines forward for "Resets" (handles extra blank lines)
+    reset_ts = None
     for k in range(i + 1, min(i + 7, len(lines))):
-        mins = parse_reset_time(lines[k])
-        if mins is not None:
-            result["mins_left"] = mins
+        reset_ts = parse_reset_ts(lines[k])
+        if reset_ts is not None:
             break
+    # Only emit pct if we also found the reset time (prevents orphaned pct without time)
+    if reset_ts is not None:
+        result["pct"] = pct
+        result["reset_ts"] = reset_ts
     break  # only need session
 
 if "pct" not in result:
