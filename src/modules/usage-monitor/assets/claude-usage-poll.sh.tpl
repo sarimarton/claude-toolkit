@@ -153,7 +153,7 @@ PHASES_JSON+="]"
 export POLL_PHASES="$PHASES_JSON"
 
 $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null \
-  | sed 's/\x1b\[[0-9;]*m//g' \
+  | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
   | python3 -c '
 import re, json, sys, time, os
 from datetime import datetime, timedelta
@@ -161,6 +161,24 @@ from datetime import datetime, timedelta
 lines = sys.stdin.read().split("\n")
 phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
 result = {"ts": int(time.time()), "phases": phases}
+
+def parse_reset_time(text):
+    """Parse "Resets 4pm" or "Resets 4:30pm" and return mins_left."""
+    m = re.search(r"Resets (\d+)(?::(\d+))?(am|pm)", text)
+    if not m:
+        return None
+    hour = int(m.group(1))
+    minute = int(m.group(2)) if m.group(2) else 0
+    ampm = m.group(3)
+    if ampm == "pm" and hour != 12: hour += 12
+    elif ampm == "am" and hour == 12: hour = 0
+    now = datetime.now()
+    reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if reset <= now:
+        if (now - reset).total_seconds() < 600:
+            return 0
+        reset += timedelta(days=1)
+    return int((reset - now).total_seconds() / 60)
 
 for i, line in enumerate(lines):
     match = re.search(r"(\d+)% used", line)
@@ -176,27 +194,11 @@ for i, line in enumerate(lines):
     if "session" not in label.lower():
         continue
     result["pct"] = pct
-    # Parse reset time and compute minutes remaining
-    for k in range(i + 1, min(i + 3, len(lines))):
-        reset_match = re.search(r"Resets (\d+)(?::(\d+))?(am|pm)", lines[k].strip())
-        if reset_match:
-            hour = int(reset_match.group(1))
-            minute = int(reset_match.group(2)) if reset_match.group(2) else 0
-            ampm = reset_match.group(3)
-            if ampm == "pm" and hour != 12:
-                hour += 12
-            elif ampm == "am" and hour == 12:
-                hour = 0
-            now = datetime.now()
-            reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if reset <= now:
-                if (now - reset).total_seconds() < 600:
-                    result["mins_left"] = 0
-                else:
-                    reset += timedelta(days=1)
-                    result["mins_left"] = int((reset - now).total_seconds() / 60)
-            else:
-                result["mins_left"] = int((reset - now).total_seconds() / 60)
+    # Search up to 6 lines forward for "Resets" (handles extra blank lines)
+    for k in range(i + 1, min(i + 7, len(lines))):
+        mins = parse_reset_time(lines[k])
+        if mins is not None:
+            result["mins_left"] = mins
             break
     break  # only need session
 

@@ -30,6 +30,25 @@ HOME_DIR="{{home}}"
 json_str()  { grep -oE "\"$1\":[[:space:]]*\"[^\"]*\"" "$USAGE_FILE" 2>/dev/null | head -1 | sed "s/\"$1\":[[:space:]]*\"//;s/\"$//" ; }
 json_num()  { grep -oE "\"$1\":[[:space:]]*[0-9]+" "$USAGE_FILE" 2>/dev/null | head -1 | grep -o '[0-9]*$' ; }
 
+# ── Auto-poll: trigger refresh if data is stale (>3 min) ──
+POLL_INTERVAL=180  # 3 minutes
+POLL_LOCK="/tmp/claude-usage-poll.lock"
+
+if [[ -f "$USAGE_FILE" ]]; then
+    file_ts=$(json_num ts)
+    now=$(date +%s)
+    age=$(( now - ${file_ts:-0} ))
+else
+    age=$((POLL_INTERVAL + 1))
+fi
+
+if (( age > POLL_INTERVAL )); then
+    # Only start poll if not already running
+    if [[ ! -f "$POLL_LOCK" ]] || ! kill -0 "$(cat "$POLL_LOCK" 2>/dev/null)" 2>/dev/null; then
+        ( echo $$ > "$POLL_LOCK"; bash "$POLL_SCRIPT"; rm -f "$POLL_LOCK" ) &>/dev/null &
+    fi
+fi
+
 # ── Read usage data ──────────────────────────────────────
 
 pct=$(json_num pct)
