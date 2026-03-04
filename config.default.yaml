@@ -1,0 +1,10 @@
+# Claude Toolkit configuration
+# Paths are auto-detected; override here if needed.
+
+# installDir: ~/.config/claude-toolkit
+
+# paths:
+#   tmux: /opt/homebrew/bin/tmux
+#   jq: /opt/homebrew/bin/jq
+#   claude: ~/.local/bin/claude
+#   hs: /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs
