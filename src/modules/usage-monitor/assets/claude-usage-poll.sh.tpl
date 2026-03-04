@@ -12,6 +12,7 @@ unset TMUX
 
 TMUX_BIN={{tmux}}
 USAGE_FILE="/tmp/claude-usage.json"
+USAGE_LOG="{{home}}/.local/share/claude-usage/usage.jsonl"
 SESSION="claude_usage_mon"
 CLAUDE={{claude}}
 
@@ -151,6 +152,7 @@ for p in "${PHASES[@]}"; do
 done
 PHASES_JSON+="]"
 export POLL_PHASES="$PHASES_JSON"
+export USAGE_LOG
 
 $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null \
   | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
@@ -220,6 +222,29 @@ if "pct" not in result:
         result["diag"] = non_empty[-15:]
 
 print(json.dumps(result))
+
+# Append to long-term JSONL log (only on successful parse with pct + reset_ts)
+if "pct" in result and "reset_ts" in result:
+    log_file = os.environ.get("USAGE_LOG", "")
+    if log_file:
+        WINDOW_HOURS = 5
+        window_dur = WINDOW_HOURS * 3600
+        window_start = result["reset_ts"] - window_dur
+        elapsed = result["ts"] - window_start
+        window_elapsed_pct = round(min(elapsed / window_dur * 100, 100), 1)
+        budget_delta = round(result["pct"] - window_elapsed_pct, 1)
+        window_id = datetime.fromtimestamp(result["reset_ts"]).strftime("%Y-%m-%dT%H:%M")
+        entry = {
+            "ts": result["ts"],
+            "pct": result["pct"],
+            "reset_ts": result["reset_ts"],
+            "window_id": window_id,
+            "window_elapsed_pct": window_elapsed_pct,
+            "budget_delta": budget_delta,
+        }
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        with open(log_file, "a") as f:
+            f.write(json.dumps(entry) + "\n")
 ' > "$USAGE_FILE"
 
 # Close the usage panel
