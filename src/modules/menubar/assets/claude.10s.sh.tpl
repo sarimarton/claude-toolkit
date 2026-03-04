@@ -298,8 +298,8 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
         echo "$line | ansi=true size=13${badge_param}${tt_param} bash=$HELPERS/claude-attach.sh param1=$sess_name terminal=false refresh=true"
     fi
 
-    # Alternate (Option held): same line + red ✕
-    echo "${line} ${A_RED}✕${A_RST} | ansi=true size=13 alternate=true bash=$TMUX_BIN param1=kill-session param2=-t param3=$sess_name terminal=false refresh=true"
+    # Alternate (Option held): same line + red ✕ (kill + reopen menu)
+    echo "${line} ${A_RED}✕${A_RST} | ansi=true size=13 alternate=true bash=$HELPERS/claude-kill.sh param1=$sess_name terminal=false refresh=true"
 
 done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_title}	#{pane_id}	#{window_id}" 2>/dev/null)
 
@@ -311,4 +311,5 @@ fi
 
 echo "---"
 echo "Refresh now | bash=$POLL_SCRIPT terminal=false refresh=true shortcut=CMD+OPT+R"
+echo "View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/usage.jsonl terminal=false"
 echo "Stop monitor | bash=$TMUX_BIN param1=kill-session param2=-t param3=claude_usage_mon terminal=false refresh=true"
