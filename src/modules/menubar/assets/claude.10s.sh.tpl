@@ -247,7 +247,7 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
         # Generate summary in background, detached from SwiftBar stdout pipe
         (
             echo $$ > "$peek_lock"
-            summary=$(echo "$buf_tail" | CLAUDECODE= {{claude}} -p --no-session-persistence --model sonnet "Foglald össze ezt a Claude Code session terminal outputját 1-2 mondatban. A user-re E/2-ben utalj ('kérted', 'akartad'), a Claude-ra E/1-ben ('szerkesztettem', 'dolgozom rajta'). Plain text, ne használj markdown-t, ne tölts ki helyet felesleges kontextussal (model név, tool verziók, file listázások)." 2>/dev/null | head -5)
+            summary=$(echo "$buf_tail" | CLAUDECODE= {{claude}} -p --no-session-persistence --model haiku "Foglald össze ezt a Claude Code session terminal outputját 1-2 mondatban. A user-re E/2-ben utalj ('kérted', 'akartad'), a Claude-ra E/1-ben ('szerkesztettem', 'dolgozom rajta'). Plain text, ne használj markdown-t, ne tölts ki helyet felesleges kontextussal (model név, tool verziók, file listázások)." 2>/dev/null | head -5)
             if [[ -n "$summary" ]]; then
                 echo "$summary" > "$peek_cache"
                 echo "$buf_hash" > "$peek_hash_file"
@@ -272,14 +272,15 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
         bullet="${A_DIM}○"
     fi
 
-    line="${bullet} ${A_DIM}[$short_path]"
+    line_body="${A_DIM}[$short_path]"
     if [[ -n "$topic_text" ]]; then
-        line="$line ${A_DIM}» ${A_MAGENTA}$topic_text"
+        line_body="$line_body ${A_DIM}» ${A_MAGENTA}$topic_text"
         if [[ -n "$comp_text" ]]; then
-            line="$line $(comp_ansi "$comp_text")${comp_text}%"
+            line_body="$line_body $(comp_ansi "$comp_text")${comp_text}%"
         fi
     fi
-    line="${line}${A_RST}"
+    line="${bullet} ${line_body}${A_RST}"
+    alt_line="${A_RED}✕  ${line_body}${A_RST}"
 
     # Badge: completeness %
     badge_param=""
@@ -298,8 +299,8 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
         echo "$line | ansi=true size=13${badge_param}${tt_param} bash=$HELPERS/claude-attach.sh param1=$sess_name terminal=false refresh=true"
     fi
 
-    # Alternate (Option held): same line + red ✕ (kill + reopen menu)
-    echo "${line} ${A_RED}✕${A_RST} | ansi=true size=13 alternate=true bash=$HELPERS/claude-kill.sh param1=$sess_name terminal=false refresh=true"
+    # Alternate (Option held): ✕ replaces bullet (kill + reopen menu)
+    echo "${alt_line} | ansi=true size=13 alternate=true bash=$HELPERS/claude-kill.sh param1=$sess_name terminal=false refresh=true"
 
 done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_title}	#{pane_id}	#{window_id}" 2>/dev/null)
 
