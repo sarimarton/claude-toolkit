@@ -82,7 +82,7 @@ claude_is_running() {
 write_phase "session"
 created_session=false
 if ! $TMUX_BIN has-session -t "$SESSION" 2>/dev/null; then
-  $TMUX_BIN new-session -d -s "$SESSION" -x 200 -y 50
+  $TMUX_BIN new-session -d -s "$SESSION" -x 200 -y 50 -c "$HOME"
   created_session=true
 fi
 
@@ -95,8 +95,14 @@ if $created_session || ! claude_is_running; then
     $TMUX_BIN send-keys -t "$SESSION" C-c 2>/dev/null
     sleep 0.3
   fi
-  $TMUX_BIN send-keys -t "$SESSION" "CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions" Enter
-  sleep 8
+  # Default ~/.claude is OAuth (no apiKeyHelper) — unset env var as safety net
+  $TMUX_BIN send-keys -t "$SESSION" "unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions" Enter
+  sleep 3
+  # Accept workspace trust dialog if present (Enter confirms the default "Yes" selection)
+  if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -q "trust this folder"; then
+    $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
+  fi
+  sleep 5
   if ! claude_is_running; then
     diag=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -v '^$' | tail -10)
     write_error_with_diag "claude_start_failed" "$diag"
@@ -112,10 +118,11 @@ if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -q "How is Claude 
   $TMUX_BIN send-keys -t "$SESSION" "0" 2>/dev/null
   sleep 1
 fi
-# Type "/usage" first, let autocomplete appear, then Enter to select & execute.
-# send-keys must NOT include Enter with the text — autocomplete needs time to match.
+# Type "/usage", dismiss autocomplete with Escape, then Enter to execute.
 $TMUX_BIN send-keys -t "$SESSION" "/usage" 2>/dev/null
-sleep 1
+sleep 0.5
+$TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
+sleep 0.3
 $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
 
 # --- Phase: wait ---
@@ -132,8 +139,12 @@ while [ $elapsed -lt $MAX_WAIT ]; do
   if echo "$content" | grep -q "% used"; then
     break
   fi
-  # API error: don't retry, just report it
+  # API error: don't retry, just report it.
+  # Rate limit errors go to parse phase (handled as pct=100 there).
   if echo "$content" | grep -q "Failed to load usage data"; then
+    if echo "$content" | grep -q "rate_limit_error"; then
+      break  # let parser handle it
+    fi
     diag=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -v '^$' | tail -10)
     $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
     write_error_with_diag "usage_unavailable" "$diag"
@@ -209,7 +220,24 @@ for i, line in enumerate(lines):
 
 if "pct" not in result:
     full = "\n".join(lines)
-    if "OAuth token does not meet scope requirement" in full or "permission_error" in full:
+    if "rate_limit_error" in full:
+        # Rate limited = budget exhausted → pct=100, recover reset_ts from JSONL log
+        result["pct"] = 100
+        result["rate_limited"] = True
+        log_file = os.environ.get("USAGE_LOG", "")
+        if log_file and os.path.exists(log_file):
+            now = int(time.time())
+            with open(log_file) as f:
+                for raw in reversed(f.read().strip().split("\n")):
+                    try:
+                        entry = json.loads(raw)
+                        # Use reset_ts only if still in the future (same billing window)
+                        if entry.get("reset_ts", 0) > now:
+                            result["reset_ts"] = entry["reset_ts"]
+                            break
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+    elif "OAuth token does not meet scope requirement" in full or "permission_error" in full:
         result["error"] = "oauth_scope_error"
     elif "Failed to load usage data" in full or "Status dialog dismissed" in full:
         result["error"] = "usage_unavailable"

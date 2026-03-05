@@ -4,7 +4,7 @@
 set -e
 
 REPO_URL="https://github.com/<user>/claude-toolkit.git"
-INSTALL_DIR="${CLAUDE_TOOLKIT_DIR:-$HOME/repos/claude-toolkit}"
+INSTALL_DIR="${CLAUDE_TOOLKIT_DIR:-$HOME/.local/share/claude-toolkit}"
 CONFIG_DIR="$HOME/.config/claude-toolkit"
 BIN_DIR="$HOME/.local/bin"
 

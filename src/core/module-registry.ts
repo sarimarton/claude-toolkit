@@ -16,6 +16,7 @@ import { manifest as sounds } from '../modules/sounds/manifest.js';
 import { manifest as sttRecovery } from '../modules/stt-recovery/manifest.js';
 import { manifest as ghosttyTmux } from '../modules/ghostty-tmux/manifest.js';
 import { manifest as vscodeTmux } from '../modules/vscode-tmux/manifest.js';
+import { manifest as dualConfig } from '../modules/dual-config/manifest.js';
 
 /** All module manifests */
 const ALL_MANIFESTS: ModuleManifest[] = [
@@ -29,6 +30,7 @@ const ALL_MANIFESTS: ModuleManifest[] = [
   sttRecovery,
   ghosttyTmux,
   vscodeTmux,
+  dualConfig,
 ];
 
 /** Get all manifests as a Map keyed by module ID */

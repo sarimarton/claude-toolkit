@@ -151,7 +151,7 @@ elif [[ -n "$phase" && -z "$error" ]]; then
     case "$phase" in
         session) label="Checking session" ;; claude) label="Checking Claude" ;;
         start)   label="Starting Claude"  ;; restart) label="Restarting" ;;
-        send)    label="Sending /usage"   ;; wait) label="Waiting…" ;;
+        send)    label="Sending /usage"   ;; wait) label="Waiting" ;;
         parse)   label="Parsing" ;;
     esac
     echo "${A_LOGO}✻ ${A_DIM}${label}…${A_RST} | ansi=true size=12"
