@@ -197,7 +197,7 @@ export function ModuleTree() {
             <Text bold={s.status === 'installed'} dimColor={!pm}>
               {s.manifest.id.padEnd(18)}
             </Text>
-            <Text dimColor>{s.manifest.description.slice(0, 60)}</Text>
+            <Text dimColor>{s.manifest.description.slice(0, Math.max(20, (process.stdout.columns ?? 100) - 23))}</Text>
           </Box>
         );
       })}
