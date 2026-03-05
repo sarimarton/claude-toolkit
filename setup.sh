@@ -1,10 +1,11 @@
 #!/bin/sh
-# Claude Toolkit — one-line installer
-# curl -fsSL https://raw.githubusercontent.com/<user>/claude-toolkit/main/setup.sh | sh
+# Claude Toolkit — installer
+#
+# Remote install:  curl -fsSL https://raw.githubusercontent.com/<user>/claude-toolkit/main/setup.sh | sh
+# Local install:   ./setup.sh           (from a cloned repo)
+# Custom location: CLAUDE_TOOLKIT_DIR=~/my/path ./setup.sh
 set -e
 
-REPO_URL="https://github.com/<user>/claude-toolkit.git"
-INSTALL_DIR="${CLAUDE_TOOLKIT_DIR:-$HOME/.local/share/claude-toolkit}"
 CONFIG_DIR="$HOME/.config/claude-toolkit"
 BIN_DIR="$HOME/.local/bin"
 
@@ -35,16 +36,28 @@ fi
 
 echo "✓ Prerequisites OK (node v$(node -v | tr -d v), git, jq)"
 
-# ── Clone or update ───────────────────────────────────────
+# ── Locate or clone the repo ─────────────────────────────
 
-if [ -d "$INSTALL_DIR/.git" ]; then
-  echo "Updating existing installation..."
+# Detect if we're running from inside a cloned repo
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/package.json" ] && grep -q '"claude-toolkit"' "$SCRIPT_DIR/package.json" 2>/dev/null; then
+  # Running locally (./setup.sh from the repo)
+  INSTALL_DIR="${CLAUDE_TOOLKIT_DIR:-$SCRIPT_DIR}"
+  echo "Using local repo: $INSTALL_DIR"
   cd "$INSTALL_DIR"
-  git pull --ff-only
 else
-  echo "Cloning to $INSTALL_DIR..."
-  git clone "$REPO_URL" "$INSTALL_DIR"
-  cd "$INSTALL_DIR"
+  # Running via curl | sh or from outside the repo — need to clone
+  INSTALL_DIR="${CLAUDE_TOOLKIT_DIR:-$HOME/.local/share/claude-toolkit}"
+  REPO_URL="${CLAUDE_TOOLKIT_REPO:-https://github.com/<user>/claude-toolkit.git}"
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    echo "Updating existing installation..."
+    cd "$INSTALL_DIR"
+    git pull --ff-only
+  else
+    echo "Cloning to $INSTALL_DIR..."
+    git clone "$REPO_URL" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+  fi
 fi
 
 # ── Build ─────────────────────────────────────────────────
