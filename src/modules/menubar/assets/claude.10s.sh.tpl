@@ -192,6 +192,13 @@ echo "---"
 seen_windows=""
 has_sessions=false
 
+# Global peek lock — max 1 concurrent peek generation across all sessions
+PEEK_GLOBAL_LOCK="/tmp/claude-peek-global.lock"
+peek_slot_available=true
+if [[ -f "$PEEK_GLOBAL_LOCK" ]] && kill -0 "$(cat "$PEEK_GLOBAL_LOCK" 2>/dev/null)" 2>/dev/null; then
+    peek_slot_available=false
+fi
+
 while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id window_id; do
     # Filter: only Claude processes (version pattern like 1.2.3), exclude monitor
     [[ ! "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && continue
@@ -232,6 +239,10 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
     if [[ -f "$peek_lock" ]] && kill -0 "$(cat "$peek_lock" 2>/dev/null)" 2>/dev/null; then
         regen=false
     fi
+    # Global dedup: skip if any peek generation is running
+    if $regen && ! $peek_slot_available; then
+        regen=false
+    fi
     # Cooldown: skip if last generation was less than 1 minute ago
     if $regen && [[ -f "$peek_hash_file" ]]; then
         last_gen=$(stat -f %m "$peek_hash_file" 2>/dev/null || echo 0)
@@ -243,17 +254,22 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
         regen=false
     fi
 
-    if [[ "$buf_hash" != "$old_hash" && -n "$buf_tail" && "$regen" == true ]]; then
+    if [[ "$buf_hash" != "$old_hash" && -n "$buf_tail" && "$regen" == true && "$peek_slot_available" == true ]]; then
+        peek_slot_available=false
         # Generate summary in background, detached from SwiftBar stdout pipe
+        # Timeout: 30s max to prevent process accumulation
         (
-            echo $$ > "$peek_lock"
-            summary=$(echo "$buf_tail" | CLAUDECODE= {{claude}} -p --no-session-persistence --model haiku "Foglald össze ezt a Claude Code session terminal outputját 1-2 mondatban. A user-re E/2-ben utalj ('kérted', 'akartad'), a Claude-ra E/1-ben ('szerkesztettem', 'dolgozom rajta'). Plain text, ne használj markdown-t, ne tölts ki helyet felesleges kontextussal (model név, tool verziók, file listázások)." 2>/dev/null | head -5)
+            _cleanup() { rm -f "$peek_lock" "$PEEK_GLOBAL_LOCK"; }
+            trap _cleanup EXIT
+            summary=$(echo "$buf_tail" | CLAUDECODE= perl -e 'alarm 30; exec @ARGV' {{claude}} -p --no-session-persistence --model haiku "Foglald össze ezt a Claude Code session terminal outputját 1-2 mondatban. A user-re E/2-ben utalj ('kérted', 'akartad'), a Claude-ra E/1-ben ('szerkesztettem', 'dolgozom rajta'). Plain text, ne használj markdown-t, ne tölts ki helyet felesleges kontextussal (model név, tool verziók, file listázások)." 2>/dev/null | head -5)
             if [[ -n "$summary" ]]; then
                 echo "$summary" > "$peek_cache"
                 echo "$buf_hash" > "$peek_hash_file"
             fi
-            rm -f "$peek_lock"
         ) &>/dev/null &
+        # Write actual background PID (not $$) for correct lock detection
+        echo $! > "$peek_lock"
+        echo $! > "$PEEK_GLOBAL_LOCK"
     fi
     peek=""
     if [[ -f "$peek_cache" ]]; then
