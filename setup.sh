@@ -1,7 +1,7 @@
 #!/bin/sh
 # Claude Toolkit — installer
 #
-# Remote install:  curl -fsSL https://raw.githubusercontent.com/<user>/claude-toolkit/main/setup.sh | sh
+# Remote install:  curl -fsSL https://raw.githubusercontent.com/sarimarton/claude-toolkit/main/setup.sh | sh
 # Local install:   ./setup.sh           (from a cloned repo)
 # Custom location: CLAUDE_TOOLKIT_DIR=~/my/path ./setup.sh
 set -e
@@ -48,7 +48,7 @@ if [ -f "$SCRIPT_DIR/package.json" ] && grep -q '"claude-toolkit"' "$SCRIPT_DIR/
 else
   # Running via curl | sh or from outside the repo — need to clone
   INSTALL_DIR="${CLAUDE_TOOLKIT_DIR:-$HOME/.local/share/claude-toolkit}"
-  REPO_URL="${CLAUDE_TOOLKIT_REPO:-https://github.com/<user>/claude-toolkit.git}"
+  REPO_URL="${CLAUDE_TOOLKIT_REPO:-https://github.com/sarimarton/claude-toolkit.git}"
   if [ -d "$INSTALL_DIR/.git" ]; then
     echo "Updating existing installation..."
     cd "$INSTALL_DIR"
