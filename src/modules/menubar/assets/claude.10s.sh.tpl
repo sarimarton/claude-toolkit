@@ -53,14 +53,22 @@ fi
 
 pct=$(json_num pct)
 reset_ts=$(json_num reset_ts)
+weekly_pct=$(json_num weekly_pct)
+weekly_reset_ts=$(json_num weekly_reset_ts)
 error=$(json_str error)
 phase=$(json_str phase)
 ts=$(json_num ts)
 
-# Compute mins_left dynamically from reset_ts (always accurate, unlike a stale snapshot)
+# Determine if weekly limit is the binding constraint
+weekly_capped=false
+[[ -n "$weekly_pct" ]] && (( weekly_pct >= 100 )) && weekly_capped=true
+
+# Compute mins_left dynamically — use weekly_reset_ts when weekly is the cap
 mins_left=""
-if [[ -n "$reset_ts" ]]; then
-    mins_left=$(( (reset_ts - $(date +%s)) / 60 ))
+effective_reset_ts="$reset_ts"
+$weekly_capped && [[ -n "$weekly_reset_ts" ]] && effective_reset_ts="$weekly_reset_ts"
+if [[ -n "$effective_reset_ts" ]]; then
+    mins_left=$(( (effective_reset_ts - $(date +%s)) / 60 ))
     (( mins_left < 0 )) && mins_left=0
 fi
 
@@ -138,9 +146,16 @@ format_ago() {
 # ── Menu bar title ───────────────────────────────────────
 
 if [[ -n "$pct" ]]; then
-    if $SHOW_REMAINING; then display_pct=$((100 - pct)); else display_pct=$pct; fi
+    if $weekly_capped; then
+        display_pct=0
+    elif $SHOW_REMAINING; then
+        display_pct=$((100 - pct))
+    else
+        display_pct=$pct
+    fi
     pct_a=$(pct_ansi $display_pct)
     title="${A_LOGO}✻ ${pct_a}${display_pct}%"
+    $weekly_capped && title="$title${A_YELLOW}W"
     [[ -n "$mins_left" ]] && title="$title ${A_DIM}($(format_time $mins_left))"
     [[ "$error" == "usage_unavailable" ]] && title="$title ${A_YELLOW}⚠"
     echo "${title}${A_RST} | ansi=true size=12"
@@ -165,12 +180,28 @@ echo "---"
 
 if [[ -n "$pct" ]]; then
     remaining_label=$($SHOW_REMAINING && echo "remaining" || echo "used")
-    status_line="${display_pct}% ${remaining_label}"
+    # When weekly is capped, show actual session % on the status line too
+    if $weekly_capped; then
+        session_display=$($SHOW_REMAINING && echo "$((100 - pct))" || echo "$pct")
+        status_line="⊘ Weekly limit reached · session ${session_display}% ${remaining_label}"
+    else
+        status_line="${display_pct}% ${remaining_label}"
+    fi
     [[ -n "$mins_left" ]] && status_line="$status_line · resets in $(format_time $mins_left)"
     ago=$(format_ago "$ts")
     [[ -n "$ago" ]] && status_line="$status_line ($ago)"
     [[ -n "$phase" ]] && status_line="$status_line · refreshing…"
     echo "${A_DIM}${status_line}${A_RST} | ansi=true size=13"
+    # Weekly usage line (show when data available and not already shown in main line)
+    if [[ -n "$weekly_pct" ]] && ! $weekly_capped; then
+        weekly_display=$($SHOW_REMAINING && echo "$((100 - weekly_pct))" || echo "$weekly_pct")
+        weekly_line="Week: ${weekly_display}% ${remaining_label}"
+        if [[ -n "$weekly_reset_ts" ]]; then
+            weekly_mins=$(( (weekly_reset_ts - $(date +%s)) / 60 ))
+            (( weekly_mins > 0 )) && weekly_line="$weekly_line · resets in $(format_time $weekly_mins)"
+        fi
+        echo "${A_DIM}${weekly_line}${A_RST} | ansi=true size=13"
+    fi
 elif [[ "$error" == "usage_unavailable" ]]; then
     ago=$(format_ago "$ts")
     line="Usage API unavailable"

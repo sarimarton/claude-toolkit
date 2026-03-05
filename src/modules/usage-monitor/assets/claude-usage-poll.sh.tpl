@@ -28,15 +28,17 @@ write_phase() {
     [ -n "$pj" ] && pj+=","
     pj+="\"$p\""
   done
-  # Carry forward cached pct/reset_ts from the existing file
-  local prev_pct="" prev_reset=""
+  # Carry forward cached pct/reset_ts/weekly_pct from the existing file
+  local prev_pct="" prev_reset="" prev_weekly=""
   if [ -f "$USAGE_FILE" ]; then
     prev_pct=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct',''))" 2>/dev/null)
     prev_reset=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('reset_ts',''))" 2>/dev/null)
+    prev_weekly=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('weekly_pct',''))" 2>/dev/null)
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
   [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
+  [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
   printf '{%s"phase":"%s","phases":[%s],"ts":%d}\n' "$extra" "$1" "$pj" "$(date +%s)" > "$USAGE_FILE"
 }
 
@@ -54,15 +56,17 @@ write_error_with_diag() {
   if [ -n "$diag" ]; then
     diag_json=$(printf '%s' "$diag" | python3 -c 'import sys,json; print(json.dumps([l.rstrip() for l in sys.stdin.read().split("\n") if l.strip()]))')
   fi
-  # Carry forward cached pct/reset_ts (stale-while-revalidate)
-  local prev_pct="" prev_reset=""
+  # Carry forward cached pct/reset_ts/weekly_pct (stale-while-revalidate)
+  local prev_pct="" prev_reset="" prev_weekly=""
   if [ -f "$USAGE_FILE" ]; then
     prev_pct=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct',''))" 2>/dev/null)
     prev_reset=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('reset_ts',''))" 2>/dev/null)
+    prev_weekly=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('weekly_pct',''))" 2>/dev/null)
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
   [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
+  [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
   printf '{%s"error":"%s","phases":[%s],"diag":%s,"ts":%d}\n' "$extra" "$error" "$pj" "$diag_json" "$(date +%s)" > "$USAGE_FILE"
   exit 1
 }
@@ -176,7 +180,7 @@ phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
 result = {"ts": int(time.time()), "phases": phases}
 
 def parse_reset_ts(text):
-    """Parse "Resets 4pm" or "Resets 4:30pm" and return epoch timestamp of next reset."""
+    """Parse "Resets 4pm" or "Resets 4:30pm" → epoch timestamp."""
     m = re.search(r"Resets (\d+)(?::(\d+))?(am|pm)", text)
     if not m:
         return None
@@ -193,36 +197,65 @@ def parse_reset_ts(text):
         reset += timedelta(days=1)
     return int(reset.timestamp())
 
+def parse_reset_relative(text):
+    """Parse "Resets in 3d 4h" or "Resets in 2h 30m" → epoch timestamp."""
+    m = re.search(r"Resets in (?:(\d+)d\s*)?(?:(\d+)h\s*)?(?:(\d+)m)?", text, re.IGNORECASE)
+    if not m or not any(m.groups()):
+        return None
+    days  = int(m.group(1)) if m.group(1) else 0
+    hours = int(m.group(2)) if m.group(2) else 0
+    mins  = int(m.group(3)) if m.group(3) else 0
+    total_secs = days * 86400 + hours * 3600 + mins * 60
+    return int(time.time()) + total_secs if total_secs > 0 else None
+
+def find_reset(lines, i):
+    """Search up to 7 lines forward for a reset timestamp."""
+    for k in range(i + 1, min(i + 7, len(lines))):
+        ts = parse_reset_ts(lines[k])
+        if ts: return ts
+        ts = parse_reset_relative(lines[k])
+        if ts: return ts
+    return None
+
+# Scan all "% used" lines — collect session and weekly data
+session_pct = None; session_reset_ts = None
+weekly_pct  = None; weekly_reset_ts  = None
+
 for i, line in enumerate(lines):
     match = re.search(r"(\d+)% used", line)
     if not match:
         continue
-    pct = int(match.group(1))
-    # Walk backwards to find label
+    pct_val = int(match.group(1))
+    # Walk backwards to find the section label
     label = ""
     for j in range(i - 1, max(i - 3, -1), -1):
-        label = lines[j].strip()
-        if label and "\u2588" not in label and "\u258c" not in label and "% used" not in label:
+        lbl = lines[j].strip()
+        if lbl and "\u2588" not in lbl and "\u258c" not in lbl and "% used" not in lbl:
+            label = lbl
             break
-    if "session" not in label.lower():
-        continue
-    # Search up to 6 lines forward for "Resets" (handles extra blank lines)
-    reset_ts = None
-    for k in range(i + 1, min(i + 7, len(lines))):
-        reset_ts = parse_reset_ts(lines[k])
-        if reset_ts is not None:
-            break
-    # Only emit pct if we also found the reset time (prevents orphaned pct without time)
-    if reset_ts is not None:
-        result["pct"] = pct
-        result["reset_ts"] = reset_ts
-    break  # only need session
+    label_lower = label.lower()
+    if "session" in label_lower and session_pct is None:
+        session_pct = pct_val
+        session_reset_ts = find_reset(lines, i)
+    elif "week" in label_lower and weekly_pct is None:
+        weekly_pct = pct_val
+        weekly_reset_ts = find_reset(lines, i)
+
+# Emit session data (require reset_ts to avoid orphaned pct)
+if session_pct is not None and session_reset_ts is not None:
+    result["pct"] = session_pct
+    result["reset_ts"] = session_reset_ts
+if weekly_pct is not None:
+    result["weekly_pct"] = weekly_pct
+if weekly_reset_ts is not None:
+    result["weekly_reset_ts"] = weekly_reset_ts
 
 if "pct" not in result:
     full = "\n".join(lines)
     if "rate_limit_error" in full:
-        # Rate limited = budget exhausted → pct=100, recover reset_ts from JSONL log
+        # Rate limited = weekly budget exhausted → pct=100, weekly_pct=100
         result["pct"] = 100
+        result["weekly_pct"] = 100
         result["rate_limited"] = True
         log_file = os.environ.get("USAGE_LOG", "")
         if log_file and os.path.exists(log_file):
@@ -231,9 +264,11 @@ if "pct" not in result:
                 for raw in reversed(f.read().strip().split("\n")):
                     try:
                         entry = json.loads(raw)
-                        # Use reset_ts only if still in the future (same billing window)
                         if entry.get("reset_ts", 0) > now:
                             result["reset_ts"] = entry["reset_ts"]
+                        if entry.get("weekly_reset_ts", 0) > now and "weekly_reset_ts" not in result:
+                            result["weekly_reset_ts"] = entry["weekly_reset_ts"]
+                        if "reset_ts" in result:
                             break
                     except (json.JSONDecodeError, KeyError):
                         continue
@@ -245,7 +280,6 @@ if "pct" not in result:
         result["diag"] = non_empty[-15:]
     else:
         result["error"] = "parse_failed"
-        # Include last non-empty lines as diagnostic
         non_empty = [l.rstrip() for l in lines if l.strip()]
         result["diag"] = non_empty[-15:]
 
@@ -262,6 +296,9 @@ if "pct" in result and "reset_ts" in result:
         window_elapsed_pct = round(min(elapsed / window_dur * 100, 100), 1)
         budget_delta = round(result["pct"] - window_elapsed_pct, 1)
         window_id = datetime.fromtimestamp(result["reset_ts"]).strftime("%Y-%m-%dT%H:%M")
+        # Burn rate: session % consumed per elapsed hour in window
+        elapsed_h = elapsed / 3600
+        burn_rate = round(result["pct"] / elapsed_h, 2) if elapsed_h > 0.1 else None
         entry = {
             "ts": result["ts"],
             "pct": result["pct"],
@@ -270,6 +307,20 @@ if "pct" in result and "reset_ts" in result:
             "window_elapsed_pct": window_elapsed_pct,
             "budget_delta": budget_delta,
         }
+        if burn_rate is not None:
+            entry["burn_rate"] = burn_rate
+        # Weekly fields
+        if "weekly_pct" in result:
+            entry["weekly_pct"] = result["weekly_pct"]
+        if "weekly_reset_ts" in result:
+            wrt = result["weekly_reset_ts"]
+            entry["weekly_reset_ts"] = wrt
+            entry["weekly_window_id"] = datetime.fromtimestamp(wrt).strftime("%Y-W%W")
+            WEEKLY_DUR = 7 * 24 * 3600
+            w_elapsed = result["ts"] - (wrt - WEEKLY_DUR)
+            entry["weekly_elapsed_pct"] = round(min(w_elapsed / WEEKLY_DUR * 100, 100), 1)
+            if "weekly_pct" in result:
+                entry["weekly_budget_delta"] = round(result["weekly_pct"] - entry["weekly_elapsed_pct"], 1)
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         with open(log_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
