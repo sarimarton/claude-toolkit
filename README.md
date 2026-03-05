@@ -5,7 +5,7 @@ Modular session management toolkit for Claude Code — hooks, tmux integration, 
 ## Quick start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sarimsaleem/claude-toolkit/main/setup.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sarimarton/claude-toolkit/main/setup.sh | sh
 ```
 
 ## Usage
