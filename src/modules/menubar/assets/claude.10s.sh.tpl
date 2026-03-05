@@ -64,11 +64,12 @@ weekly_capped=false
 [[ -n "$weekly_pct" ]] && (( weekly_pct >= 100 )) && weekly_capped=true
 
 # Compute mins_left dynamically — use weekly_reset_ts when weekly is the cap
+now=$(date +%s)
 mins_left=""
 effective_reset_ts="$reset_ts"
 $weekly_capped && [[ -n "$weekly_reset_ts" ]] && effective_reset_ts="$weekly_reset_ts"
 if [[ -n "$effective_reset_ts" ]]; then
-    mins_left=$(( (effective_reset_ts - $(date +%s)) / 60 ))
+    mins_left=$(( (effective_reset_ts - now) / 60 ))
     (( mins_left < 0 )) && mins_left=0
 fi
 
@@ -182,7 +183,7 @@ if [[ -n "$pct" ]]; then
     remaining_label=$($SHOW_REMAINING && echo "remaining" || echo "used")
     # When weekly is capped, show actual session % on the status line too
     if $weekly_capped; then
-        session_display=$($SHOW_REMAINING && echo "$((100 - pct))" || echo "$pct")
+        if $SHOW_REMAINING; then session_display=$((100 - pct)); else session_display=$pct; fi
         status_line="⊘ Weekly limit reached · session ${session_display}% ${remaining_label}"
     else
         status_line="${display_pct}% ${remaining_label}"
@@ -194,10 +195,10 @@ if [[ -n "$pct" ]]; then
     echo "${A_DIM}${status_line}${A_RST} | ansi=true size=13"
     # Weekly usage line (show when data available and not already shown in main line)
     if [[ -n "$weekly_pct" ]] && ! $weekly_capped; then
-        weekly_display=$($SHOW_REMAINING && echo "$((100 - weekly_pct))" || echo "$weekly_pct")
+        if $SHOW_REMAINING; then weekly_display=$((100 - weekly_pct)); else weekly_display=$weekly_pct; fi
         weekly_line="Week: ${weekly_display}% ${remaining_label}"
         if [[ -n "$weekly_reset_ts" ]]; then
-            weekly_mins=$(( (weekly_reset_ts - $(date +%s)) / 60 ))
+            weekly_mins=$(( (weekly_reset_ts - now) / 60 ))
             (( weekly_mins > 0 )) && weekly_line="$weekly_line · resets in $(format_time $weekly_mins)"
         fi
         echo "${A_DIM}${weekly_line}${A_RST} | ansi=true size=13"

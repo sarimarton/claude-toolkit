@@ -31,9 +31,13 @@ write_phase() {
   # Carry forward cached pct/reset_ts/weekly_pct from the existing file
   local prev_pct="" prev_reset="" prev_weekly=""
   if [ -f "$USAGE_FILE" ]; then
-    prev_pct=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct',''))" 2>/dev/null)
-    prev_reset=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('reset_ts',''))" 2>/dev/null)
-    prev_weekly=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('weekly_pct',''))" 2>/dev/null)
+    { read -r prev_pct; read -r prev_reset; read -r prev_weekly; } < <(python3 -c "
+import json
+try:
+    d=json.load(open('$USAGE_FILE'))
+    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct',''))
+except: print(); print(); print()
+" 2>/dev/null) || true
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
@@ -59,9 +63,13 @@ write_error_with_diag() {
   # Carry forward cached pct/reset_ts/weekly_pct (stale-while-revalidate)
   local prev_pct="" prev_reset="" prev_weekly=""
   if [ -f "$USAGE_FILE" ]; then
-    prev_pct=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct',''))" 2>/dev/null)
-    prev_reset=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('reset_ts',''))" 2>/dev/null)
-    prev_weekly=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('weekly_pct',''))" 2>/dev/null)
+    { read -r prev_pct; read -r prev_reset; read -r prev_weekly; } < <(python3 -c "
+import json
+try:
+    d=json.load(open('$USAGE_FILE'))
+    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct',''))
+except: print(); print(); print()
+" 2>/dev/null) || true
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
@@ -264,12 +272,14 @@ if "pct" not in result:
                 for raw in reversed(f.read().strip().split("\n")):
                     try:
                         entry = json.loads(raw)
-                        if entry.get("reset_ts", 0) > now:
+                        if entry.get("reset_ts", 0) > now and "reset_ts" not in result:
                             result["reset_ts"] = entry["reset_ts"]
                         if entry.get("weekly_reset_ts", 0) > now and "weekly_reset_ts" not in result:
                             result["weekly_reset_ts"] = entry["weekly_reset_ts"]
                         if "reset_ts" in result:
-                            break
+                            # Stop if both found, or if this entry has no weekly key (legacy)
+                            if "weekly_reset_ts" in result or "weekly_reset_ts" not in entry:
+                                break
                     except (json.JSONDecodeError, KeyError):
                         continue
     elif "OAuth token does not meet scope requirement" in full or "permission_error" in full:
