@@ -327,8 +327,9 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
             line_body="$line_body $(comp_ansi "$comp_text")${comp_text}%"
         fi
     fi
-    line="${bullet} ${line_body}${A_RST}"
-    alt_line="${A_RED}✕  ${line_body}${A_RST}"
+    # Braille blank (U+2800) prevents SwiftBar from trimming trailing spaces — keeps line wider than alt_line to avoid layout shift
+    line="${bullet} ${line_body}${A_RST}  $(printf '\xe2\xa0\x80')"
+    alt_line="${bullet} ${line_body} ${A_RED}✕${A_RST}"
 
     # Badge: completeness %
     badge_param=""
