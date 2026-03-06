@@ -188,7 +188,24 @@ phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
 result = {"ts": int(time.time()), "phases": phases}
 
 def parse_reset_ts(text):
-    """Parse "Resets 4pm" or "Resets 4:30pm" → epoch timestamp."""
+    """Parse "Resets 4pm", "Resets 4:30pm", or "Resets Mar 13 at 5am (TZ)" → epoch timestamp."""
+    # New format: "Resets Mar 13 at 5am" or "Resets Mar 13 at 5:30pm (Europe/Bucharest)"
+    m2 = re.search(r"Resets (\w+) (\d+) at (\d+)(?::(\d+))?(am|pm)", text)
+    if m2:
+        month_str, day, hour, minute_str, ampm = m2.group(1), int(m2.group(2)), int(m2.group(3)), m2.group(4), m2.group(5)
+        minute = int(minute_str) if minute_str else 0
+        if ampm == "pm" and hour != 12: hour += 12
+        elif ampm == "am" and hour == 12: hour = 0
+        months = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,"Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
+        month = months.get(month_str, 1)
+        now = datetime.now()
+        year = now.year
+        reset = datetime(year, month, day, hour, minute, 0)
+        # If the reset time is far in the past, assume next year
+        if reset < now - timedelta(days=1):
+            reset = datetime(year + 1, month, day, hour, minute, 0)
+        return int(reset.timestamp())
+    # Legacy format: "Resets 4pm" or "Resets 4:30pm"
     m = re.search(r"Resets (\d+)(?::(\d+))?(am|pm)", text)
     if not m:
         return None
