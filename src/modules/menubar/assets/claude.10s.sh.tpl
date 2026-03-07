@@ -63,11 +63,20 @@ ts=$(json_num ts)
 weekly_capped=false
 [[ -n "$weekly_pct" ]] && (( weekly_pct >= 100 )) && weekly_capped=true
 
-# Compute mins_left dynamically — use weekly_reset_ts when weekly is the cap
+# Compute mins_left dynamically
+# Default: show session (5h) reset. Show weekly only when weekly is the binding cap.
+# Skip reset display entirely when session has no active window (pct=0 or reset_ts == weekly_reset_ts).
 now=$(date +%s)
 mins_left=""
-effective_reset_ts="$reset_ts"
-$weekly_capped && [[ -n "$weekly_reset_ts" ]] && effective_reset_ts="$weekly_reset_ts"
+effective_reset_ts=""
+if $weekly_capped; then
+    [[ -n "$weekly_reset_ts" ]] && effective_reset_ts="$weekly_reset_ts"
+elif [[ -n "$reset_ts" && -n "$pct" ]] && (( pct > 0 )); then
+    # Only show session reset when there's actual usage (active 5h window)
+    if [[ "$reset_ts" != "$weekly_reset_ts" ]]; then
+        effective_reset_ts="$reset_ts"
+    fi
+fi
 if [[ -n "$effective_reset_ts" ]]; then
     mins_left=$(( (effective_reset_ts - now) / 60 ))
     (( mins_left < 0 )) && mins_left=0
