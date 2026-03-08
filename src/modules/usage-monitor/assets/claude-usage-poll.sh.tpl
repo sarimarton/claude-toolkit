@@ -109,12 +109,20 @@ if $created_session || ! claude_is_running; then
   fi
   # Default ~/.claude is OAuth (no apiKeyHelper) — unset env var as safety net
   $TMUX_BIN send-keys -t "$SESSION" "unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions" Enter
-  sleep 3
-  # Accept workspace trust dialog if present (Enter confirms the default "Yes" selection)
-  if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -q "trust this folder"; then
-    $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
-  fi
-  sleep 5
+  # Wait for Claude to start, checking for trust dialog repeatedly
+  for attempt in 1 2 3 4 5 6; do
+    sleep 2
+    pane=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null)
+    if echo "$pane" | grep -q "trust this folder"; then
+      $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
+      sleep 3
+      break
+    fi
+    # Already past trust dialog (Claude prompt visible)
+    if echo "$pane" | grep -qE "^❯"; then
+      break
+    fi
+  done
   if ! claude_is_running; then
     diag=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -v '^$' | tail -10)
     write_error_with_diag "claude_start_failed" "$diag"
