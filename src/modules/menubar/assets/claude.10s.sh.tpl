@@ -56,6 +56,7 @@ reset_ts=$(json_num reset_ts)
 weekly_pct=$(json_num weekly_pct)
 weekly_reset_ts=$(json_num weekly_reset_ts)
 error=$(json_str error)
+error_detail=$(json_str error_detail)
 phase=$(json_str phase)
 ts=$(json_num ts)
 
@@ -65,17 +66,13 @@ weekly_capped=false
 
 # Compute mins_left dynamically
 # Default: show session (5h) reset. Show weekly only when weekly is the binding cap.
-# Skip reset display entirely when session has no active window (pct=0 or reset_ts == weekly_reset_ts).
 now=$(date +%s)
 mins_left=""
 effective_reset_ts=""
 if $weekly_capped; then
     [[ -n "$weekly_reset_ts" ]] && effective_reset_ts="$weekly_reset_ts"
 elif [[ -n "$reset_ts" && -n "$pct" ]] && (( pct > 0 )); then
-    # Only show session reset when there's actual usage (active 5h window)
-    if [[ "$reset_ts" != "$weekly_reset_ts" ]]; then
-        effective_reset_ts="$reset_ts"
-    fi
+    effective_reset_ts="$reset_ts"
 fi
 if [[ -n "$effective_reset_ts" ]]; then
     mins_left=$(( (effective_reset_ts - now) / 60 ))
@@ -163,11 +160,14 @@ if [[ -n "$pct" ]]; then
     else
         display_pct=$pct
     fi
-    pct_a=$(pct_ansi $display_pct)
+    if [[ "$error" == "usage_unavailable" ]]; then
+        pct_a="$A_DIM"  # stale data → gray
+    else
+        pct_a=$(pct_ansi $display_pct)
+    fi
     title="${A_LOGO}✻ ${pct_a}${display_pct}%"
     $weekly_capped && title="$title${A_YELLOW}W"
     [[ -n "$mins_left" ]] && title="$title ${A_DIM}($(format_time $mins_left))"
-    [[ "$error" == "usage_unavailable" ]] && title="$title ${A_YELLOW}⚠"
     echo "${title}${A_RST} | ansi=true size=12"
 elif [[ "$error" == "usage_unavailable" ]]; then
     echo "${A_LOGO}✻ ${A_YELLOW}⚠${A_RST} | ansi=true size=12"
@@ -200,7 +200,13 @@ if [[ -n "$pct" ]]; then
     [[ -n "$mins_left" ]] && status_line="$status_line · resets in $(format_time $mins_left)"
     ago=$(format_ago "$ts")
     [[ -n "$ago" ]] && status_line="$status_line ($ago)"
-    [[ -n "$phase" ]] && status_line="$status_line · refreshing…"
+    if [[ "$error" == "usage_unavailable" ]]; then
+        stale_reason="stale"
+        [[ -n "$error_detail" ]] && stale_reason="stale: $error_detail"
+        status_line="$status_line · ⚠ $stale_reason"
+    elif [[ -n "$phase" ]]; then
+        status_line="$status_line · refreshing…"
+    fi
     echo "${A_DIM}${status_line}${A_RST} | ansi=true size=13"
     # Weekly usage line (show when data available and not already shown in main line)
     if [[ -n "$weekly_pct" ]] && ! $weekly_capped; then

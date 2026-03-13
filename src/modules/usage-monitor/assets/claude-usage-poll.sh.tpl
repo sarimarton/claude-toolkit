@@ -28,21 +28,22 @@ write_phase() {
     [ -n "$pj" ] && pj+=","
     pj+="\"$p\""
   done
-  # Carry forward cached pct/reset_ts/weekly_pct from the existing file
-  local prev_pct="" prev_reset="" prev_weekly=""
+  # Carry forward cached pct/reset_ts/weekly_pct/weekly_reset_ts from the existing file
+  local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset=""
   if [ -f "$USAGE_FILE" ]; then
-    { read -r prev_pct; read -r prev_reset; read -r prev_weekly; } < <(python3 -c "
+    { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; } < <(python3 -c "
 import json
 try:
     d=json.load(open('$USAGE_FILE'))
-    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct',''))
-except: print(); print(); print()
+    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts',''))
+except: print(); print(); print(); print()
 " 2>/dev/null) || true
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
   [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
   [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
+  [ -n "$prev_weekly_reset" ] && extra+="\"weekly_reset_ts\":$prev_weekly_reset,"
   printf '{%s"phase":"%s","phases":[%s],"ts":%d}\n' "$extra" "$1" "$pj" "$(date +%s)" > "$USAGE_FILE"
 }
 
@@ -60,21 +61,22 @@ write_error_with_diag() {
   if [ -n "$diag" ]; then
     diag_json=$(printf '%s' "$diag" | python3 -c 'import sys,json; print(json.dumps([l.rstrip() for l in sys.stdin.read().split("\n") if l.strip()]))')
   fi
-  # Carry forward cached pct/reset_ts/weekly_pct (stale-while-revalidate)
-  local prev_pct="" prev_reset="" prev_weekly=""
+  # Carry forward cached pct/reset_ts/weekly_pct/weekly_reset_ts (stale-while-revalidate)
+  local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset=""
   if [ -f "$USAGE_FILE" ]; then
-    { read -r prev_pct; read -r prev_reset; read -r prev_weekly; } < <(python3 -c "
+    { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; } < <(python3 -c "
 import json
 try:
     d=json.load(open('$USAGE_FILE'))
-    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct',''))
-except: print(); print(); print()
+    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts',''))
+except: print(); print(); print(); print()
 " 2>/dev/null) || true
   fi
   local extra=""
   [ -n "$prev_pct" ] && extra+="\"pct\":$prev_pct,"
   [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
   [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
+  [ -n "$prev_weekly_reset" ] && extra+="\"weekly_reset_ts\":$prev_weekly_reset,"
   printf '{%s"error":"%s","phases":[%s],"diag":%s,"ts":%d}\n' "$extra" "$error" "$pj" "$diag_json" "$(date +%s)" > "$USAGE_FILE"
   exit 1
 }
@@ -185,45 +187,84 @@ PHASES_JSON+="]"
 export POLL_PHASES="$PHASES_JSON"
 export USAGE_LOG
 
+# Save previous data so Python parser can carry forward stale values on error (SWR)
+export PREV_USAGE_DATA=""
+[[ -f "$USAGE_FILE" ]] && PREV_USAGE_DATA=$(cat "$USAGE_FILE" 2>/dev/null)
+
 $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null \
   | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
   | python3 -c '
 import re, json, sys, time, os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 lines = sys.stdin.read().split("\n")
 phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
 result = {"ts": int(time.time()), "phases": phases}
 
+# Load previous data for stale-while-revalidate (carry forward on error)
+prev = {}
+try:
+    prev = json.loads(os.environ.get("PREV_USAGE_DATA", "{}"))
+except (json.JSONDecodeError, TypeError):
+    pass
+
 def parse_reset_ts(text):
     """Parse "Resets 4pm", "Resets 4:30pm", or "Resets Mar 13 at 5am (TZ)" → epoch timestamp."""
     # New format: "Resets Mar 13 at 5am" or "Resets Mar 13 at 5:30pm (Europe/Bucharest)"
-    m2 = re.search(r"Resets (\w+) (\d+) at (\d+)(?::(\d+))?(am|pm)", text)
+    m2 = re.search(r"Resets (\w+) (\d+) at (\d+)(?::(\d+))?(am|pm)(?:\s*\(([^)]+)\))?", text)
     if m2:
         month_str, day, hour, minute_str, ampm = m2.group(1), int(m2.group(2)), int(m2.group(3)), m2.group(4), m2.group(5)
+        tz_name = m2.group(6)  # e.g. "Europe/Bucharest" or None
         minute = int(minute_str) if minute_str else 0
         if ampm == "pm" and hour != 12: hour += 12
         elif ampm == "am" and hour == 12: hour = 0
         months = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,"Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
         month = months.get(month_str, 1)
-        now = datetime.now()
+        # Use explicit timezone if available, otherwise fall back to local time
+        tz = None
+        if tz_name:
+            try:
+                tz = ZoneInfo(tz_name)
+            except (KeyError, Exception):
+                pass
+        now = datetime.now(tz) if tz else datetime.now()
         year = now.year
-        reset = datetime(year, month, day, hour, minute, 0)
+        if tz:
+            reset = datetime(year, month, day, hour, minute, 0, tzinfo=tz)
+        else:
+            reset = datetime(year, month, day, hour, minute, 0)
         # If the reset time is far in the past, assume next year
         if reset < now - timedelta(days=1):
-            reset = datetime(year + 1, month, day, hour, minute, 0)
+            if tz:
+                reset = datetime(year + 1, month, day, hour, minute, 0, tzinfo=tz)
+            else:
+                reset = datetime(year + 1, month, day, hour, minute, 0)
         return int(reset.timestamp())
-    # Legacy format: "Resets 4pm" or "Resets 4:30pm"
-    m = re.search(r"Resets (\d+)(?::(\d+))?(am|pm)", text)
+    # Legacy format: "Resets 4pm" or "Resets 4:30pm" or "Resets 12pm (Europe/Bucharest)"
+    m = re.search(r"Resets (\d+)(?::(\d+))?(am|pm)(?:\s*\(([^)]+)\))?", text)
     if not m:
         return None
     hour = int(m.group(1))
     minute = int(m.group(2)) if m.group(2) else 0
     ampm = m.group(3)
+    tz_name = m.group(4)
     if ampm == "pm" and hour != 12: hour += 12
     elif ampm == "am" and hour == 12: hour = 0
-    now = datetime.now()
-    reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    tz = None
+    if tz_name:
+        try:
+            tz = ZoneInfo(tz_name)
+        except (KeyError, Exception):
+            pass
+    now = datetime.now(tz) if tz else datetime.now()
+    if tz:
+        reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    else:
+        reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if reset <= now:
         if (now - reset).total_seconds() < 600:
             return int(reset.timestamp())
@@ -309,14 +350,24 @@ if "pct" not in result:
                         continue
     elif "OAuth token does not meet scope requirement" in full or "permission_error" in full:
         result["error"] = "oauth_scope_error"
-    elif "Failed to load usage data" in full or "Status dialog dismissed" in full:
+    elif "Status dialog dismissed" in full:
         result["error"] = "usage_unavailable"
+        result["error_detail"] = "dialog dismissed"
+        non_empty = [l.rstrip() for l in lines if l.strip()]
+        result["diag"] = non_empty[-15:]
+    elif "Failed to load usage data" in full:
+        result["error"] = "usage_unavailable"
+        result["error_detail"] = "API error"
         non_empty = [l.rstrip() for l in lines if l.strip()]
         result["diag"] = non_empty[-15:]
     else:
         result["error"] = "parse_failed"
         non_empty = [l.rstrip() for l in lines if l.strip()]
         result["diag"] = non_empty[-15:]
+    # Stale-while-revalidate: carry forward previous data on error
+    for key in ("pct", "reset_ts", "weekly_pct", "weekly_reset_ts"):
+        if key not in result and key in prev:
+            result[key] = prev[key]
 
 print(json.dumps(result))
 
