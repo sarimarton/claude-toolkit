@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useApp, useInput } from 'ink';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { resolveConfig, ensureInstallDirs, getTargetDir } from '../core/config.js';
 import { getAllManifests, getAllModuleStatuses, getInstalledModuleIds } from '../core/module-registry.js';
 import { resolveInstall, resolveUninstall } from '../core/dependency-resolver.js';
@@ -20,11 +20,16 @@ function getModulesDir(): string {
 
 export function ModuleTree() {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const [statuses, setStatuses] = useState<ModuleStatusInfo[]>([]);
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<Mode>('browse');
   const [message, setMessage] = useState('');
+
+  const cols = stdout?.columns ?? 100;
+  const listWidth = Math.min(28, Math.floor(cols * 0.3));
+  const detailWidth = cols - listWidth - 5; // 5 for borders/padding
 
   useEffect(() => {
     const config = resolveConfig();
@@ -61,8 +66,15 @@ export function ModuleTree() {
           return next;
         });
       }
+    } else if (input === 'a') {
+      // Toggle select all / deselect all
+      setSelected(prev => {
+        if (prev.size === statuses.length) {
+          return new Set();
+        }
+        return new Set(statuses.map(s => s.manifest.id));
+      });
     } else if (input === 'i') {
-      // Install selected (or current if none selected)
       const toInstall = selected.size > 0 ? [...selected] : [statuses[cursor]?.manifest.id].filter(Boolean);
       if (toInstall.length === 0) return;
       const manifests = getAllManifests();
@@ -78,7 +90,6 @@ export function ModuleTree() {
       );
       setMode('confirm-install');
     } else if (input === 'u') {
-      // Uninstall selected (or current)
       const toUninstall = selected.size > 0 ? [...selected] : [statuses[cursor]?.manifest.id].filter(Boolean);
       if (toUninstall.length === 0) return;
       const manifests = getAllManifests();
@@ -174,33 +185,78 @@ export function ModuleTree() {
 
   if (statuses.length === 0) return <Text dimColor>Loading...</Text>;
 
+  const current = statuses[cursor];
+  const deps = current?.manifest.dependencies ?? [];
+  const exts = current?.manifest.externals ?? [];
+
   return (
     <Box flexDirection="column">
       <Box marginBottom={1}>
         <Text bold>Claude Toolkit</Text>
-        <Text dimColor>  j/k: navigate  space: select  i: install  u: uninstall  q: quit</Text>
+        <Text dimColor>  j/k: navigate  space: select  a: all  i: install  u: uninstall  q: quit</Text>
       </Box>
 
-      {statuses.map((s, i) => {
-        const isCursor = i === cursor;
-        const isSelected = selected.has(s.manifest.id);
-        const pm = platformMatches(s.manifest.platform);
+      <Box>
+        {/* Left panel: module list */}
+        <Box flexDirection="column" width={listWidth}>
+          {statuses.map((s, i) => {
+            const isCursor = i === cursor;
+            const isSelected = selected.has(s.manifest.id);
+            const pm = platformMatches(s.manifest.platform);
 
-        const statusIcon = s.status === 'installed' ? '✓' : s.status === 'partial' ? '◐' : '○';
-        const statusColor = s.status === 'installed' ? 'green' : s.status === 'partial' ? 'yellow' : 'gray';
+            const statusIcon = s.status === 'installed' ? '✓' : s.status === 'partial' ? '◐' : '○';
+            const statusColor = s.status === 'installed' ? 'green' : s.status === 'partial' ? 'yellow' : 'gray';
 
-        return (
-          <Box key={s.manifest.id}>
-            <Text color={isCursor ? 'cyan' : undefined}>
-              {isCursor ? '▸' : ' '}{isSelected ? '◉' : ' '} </Text>
-            <Text color={statusColor}>{statusIcon} </Text>
-            <Text bold={s.status === 'installed'} dimColor={!pm}>
-              {s.manifest.id.padEnd(18)}
-            </Text>
-            <Text dimColor>{s.manifest.description.slice(0, Math.max(20, (process.stdout.columns ?? 100) - 23))}</Text>
-          </Box>
-        );
-      })}
+            return (
+              <Box key={s.manifest.id}>
+                <Text color={isCursor ? 'cyan' : undefined}>
+                  {isCursor ? '▸' : ' '}{isSelected ? '◉' : ' '} </Text>
+                <Text color={statusColor}>{statusIcon} </Text>
+                <Text bold={isCursor} dimColor={!pm}>
+                  {s.manifest.id}
+                </Text>
+              </Box>
+            );
+          })}
+        </Box>
+
+        {/* Separator */}
+        <Box flexDirection="column" marginLeft={1} marginRight={1}>
+          <Text dimColor>│</Text>
+          {statuses.map((_, i) => (
+            <Text key={i} dimColor>│</Text>
+          ))}
+        </Box>
+
+        {/* Right panel: detail for current module */}
+        <Box flexDirection="column" width={detailWidth}>
+          <Text bold color="cyan">{current?.manifest.name}</Text>
+          <Text dimColor>
+            {current?.manifest.platform !== 'any' ? `(${current?.manifest.platform} only)  ` : ''}
+            {current?.status === 'installed' ? '✓ installed' : current?.status === 'partial' ? '◐ partial' : '○ not installed'}
+          </Text>
+          <Text> </Text>
+          <Text wrap="wrap">{current?.manifest.description}</Text>
+          {deps.length > 0 && (
+            <>
+              <Text> </Text>
+              <Text dimColor>Dependencies: {deps.map(d => d.module + (d.type === 'soft' ? ' (optional)' : '')).join(', ')}</Text>
+            </>
+          )}
+          {exts.length > 0 && (
+            <>
+              <Text> </Text>
+              <Text dimColor>Requires: {exts.map(e => e.binary + (e.required ? '' : ' (optional)')).join(', ')}</Text>
+            </>
+          )}
+        </Box>
+      </Box>
+
+      {selected.size > 0 && (
+        <Box marginTop={1}>
+          <Text dimColor>{selected.size} selected</Text>
+        </Box>
+      )}
 
       {message && (
         <Box marginTop={1}>
