@@ -151,11 +151,16 @@ $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
 # Poll pane content until data appears, error is detected, or timeout.
 # No aggressive retries — if the API is down, accept it gracefully.
 write_phase "wait"
-MAX_WAIT=15
-elapsed=0
-while [ $elapsed -lt $MAX_WAIT ]; do
-  sleep 2
-  elapsed=$((elapsed + 2))
+MAX_ATTEMPTS=30
+attempt=0
+while [ $attempt -lt $MAX_ATTEMPTS ]; do
+  # Fast polling (0.2s) for the first 3s, then slower (1s) until timeout
+  if [ $attempt -lt 15 ]; then
+    sleep 0.2
+  else
+    sleep 1
+  fi
+  attempt=$((attempt + 1))
   content=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
   # Success: usage data loaded
   if echo "$content" | grep -q "% used"; then
