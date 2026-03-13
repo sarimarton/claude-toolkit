@@ -42,8 +42,16 @@ export function resolveConfig(): ResolvedConfig {
   const hooksDir = path.join(installDir, 'hooks');
   const scriptsDir = path.join(installDir, 'scripts');
   const commandsDir = path.join(installDir, 'commands');
-  const swiftbarDir = path.join(installDir, 'swiftbar');
   const helpersDir = path.join(installDir, 'helpers');
+
+  // SwiftBar: read actual plugin directory from macOS defaults, fall back to ~/.config/swiftbar
+  let swiftbarDir = path.join(HOME, '.config', 'swiftbar');
+  try {
+    const plist = execSync('defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null', { encoding: 'utf-8' }).trim();
+    if (plist) swiftbarDir = plist;
+  } catch {
+    // SwiftBar not installed or no preference set — use default
+  }
 
   return {
     tmux: p.tmux || which('tmux', '/opt/homebrew/bin/tmux'),

@@ -290,10 +290,10 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
     if $regen && ! $peek_slot_available; then
         regen=false
     fi
-    # Cooldown: skip if last generation was less than 1 minute ago
+    # Cooldown: skip if last generation was less than 2 minutes ago
     if $regen && [[ -f "$peek_hash_file" ]]; then
         last_gen=$(stat -f %m "$peek_hash_file" 2>/dev/null || echo 0)
-        (( $(date +%s) - last_gen < 60 )) && regen=false
+        (( $(date +%s) - last_gen < 120 )) && regen=false
     fi
     # State-aware: skip during active streaming (only generate for waiting/done)
     state_text=$(echo "$topic_line" | sed -n 's/.*\$state:[[:space:]]*\([a-z]*\).*/\1/p')

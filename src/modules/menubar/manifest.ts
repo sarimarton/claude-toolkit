@@ -33,5 +33,11 @@ export const manifest: ModuleManifest = {
       filename: 'claude-focus.sh',
       executable: true,
     },
+    {
+      source: 'claude-kill.sh.tpl',
+      target: 'scripts',
+      filename: 'claude-kill.sh',
+      executable: true,
+    },
   ],
 };
