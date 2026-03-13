@@ -17,11 +17,16 @@ tab_was_closed() {
 }
 
 QUIT_MARKER="/tmp/.ghostty-quitting"
+HS=/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs
 
-# Kill tmux session on tab close (not detach, not app quit)
+# Kill tmux session on Alt+close (not detach, not plain close, not app quit)
 cleanup() {
     local session="$1"
     tab_was_closed || return
+    # Check Alt modifier IMMEDIATELY (before user releases the key)
+    local alt_held
+    alt_held=$($HS -c "hs.eventtap.checkKeyboardModifiers().alt" 2>/dev/null)
+    [[ "$alt_held" != "true" ]] && return
     # Wait for Ghostty to fully quit — 1.5s is invisible (tab is already closed visually)
     sleep 1.5
     # Sibling script already detected app quit → preserve
@@ -33,10 +38,6 @@ cleanup() {
     fi
     # Session already gone (Cmd+W / prefix+Q killed it)
     {{tmux}} has-session -t "$session" 2>/dev/null || return
-    # Session still attached elsewhere → don't kill
-    local attached
-    attached=$({{tmux}} display -t "$session" -p '#{session_attached}' 2>/dev/null) || return
-    [[ "$attached" -gt 0 ]] && return
     {{tmux}} kill-session -t "$session" 2>/dev/null
 }
 

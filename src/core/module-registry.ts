@@ -17,6 +17,7 @@ import { manifest as sttRecovery } from '../modules/stt-recovery/manifest.js';
 import { manifest as ghosttyTmux } from '../modules/ghostty-tmux/manifest.js';
 import { manifest as vscodeTmux } from '../modules/vscode-tmux/manifest.js';
 import { manifest as dualConfig } from '../modules/dual-config/manifest.js';
+import { manifest as vscodeTerminalTopic } from '../modules/vscode-terminal-topic/manifest.js';
 
 /** All module manifests */
 const ALL_MANIFESTS: ModuleManifest[] = [
@@ -31,6 +32,7 @@ const ALL_MANIFESTS: ModuleManifest[] = [
   ghosttyTmux,
   vscodeTmux,
   dualConfig,
+  vscodeTerminalTopic,
 ];
 
 /** Get all manifests as a Map keyed by module ID */

@@ -77,9 +77,30 @@ chmod +x "$BIN_DIR/claude-toolkit"
 # ── Config ────────────────────────────────────────────────
 
 mkdir -p "$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR/topics"
 if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
   cp "$INSTALL_DIR/config.default.yaml" "$CONFIG_DIR/config.yaml"
   echo "Created $CONFIG_DIR/config.yaml"
+fi
+
+# ── VS Code Terminal Topic extension ─────────────────────
+
+EXT_DIR="$INSTALL_DIR/src/modules/vscode-terminal-topic/extension"
+if [ -d "$EXT_DIR" ] && command -v code >/dev/null 2>&1; then
+  echo "Building VS Code Terminal Topic extension..."
+  (cd "$EXT_DIR" && npm ci --ignore-scripts && npm run compile)
+  if command -v vsce >/dev/null 2>&1; then
+    (cd "$EXT_DIR" && vsce package -o "$EXT_DIR/vscode-terminal-topic.vsix" && code --install-extension "$EXT_DIR/vscode-terminal-topic.vsix" --force)
+    echo "✓ VS Code Terminal Topic extension installed"
+  else
+    # Fallback: direct copy to extensions dir
+    VSCODE_EXT_DIR="$HOME/.vscode/extensions/sarim.vscode-terminal-topic-0.1.0"
+    mkdir -p "$VSCODE_EXT_DIR/out"
+    cp "$EXT_DIR/package.json" "$VSCODE_EXT_DIR/"
+    cp "$EXT_DIR/out/extension.js" "$VSCODE_EXT_DIR/out/"
+    cp "$EXT_DIR/out/extension.js.map" "$VSCODE_EXT_DIR/out/" 2>/dev/null || true
+    echo "✓ VS Code Terminal Topic extension installed (direct copy)"
+  fi
 fi
 
 # ── Done ──────────────────────────────────────────────────

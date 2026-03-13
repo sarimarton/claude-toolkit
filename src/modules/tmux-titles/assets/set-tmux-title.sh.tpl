@@ -6,7 +6,7 @@
 [[ -z "$TMUX" ]] && exit 0
 [[ -n "$DICTATION_HOOK_RUNNING" ]] && exit 0
 
-TOPICS_DIR="{{home}}/.config/vscode-terminal-topic/topics"
+TOPICS_DIR="{{install_dir}}/topics"
 
 marker=$({{tmux}} capture-pane -p -S -100 2>/dev/null | grep '(\$topic:' | tail -1)
 

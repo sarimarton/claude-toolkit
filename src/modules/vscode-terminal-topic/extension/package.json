@@ -1,0 +1,34 @@
+{
+  "name": "vscode-terminal-topic",
+  "displayName": "Terminal Topic Renamer",
+  "description": "Renames VS Code terminal tabs based on Claude Code $topic markers via file-watcher IPC",
+  "version": "0.1.0",
+  "publisher": "sarim",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "terminal-topic.showLog",
+        "title": "Terminal Topic: Show Log"
+      }
+    ]
+  },
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}
