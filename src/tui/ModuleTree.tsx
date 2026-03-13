@@ -252,11 +252,9 @@ export function ModuleTree() {
         </Box>
       </Box>
 
-      {selected.size > 0 && (
-        <Box marginTop={1}>
-          <Text dimColor>{selected.size} selected</Text>
-        </Box>
-      )}
+      <Box marginTop={1}>
+        <Text dimColor>{selected.size > 0 ? `${selected.size} selected` : ' '}</Text>
+      </Box>
 
       {message && (
         <Box marginTop={1}>
