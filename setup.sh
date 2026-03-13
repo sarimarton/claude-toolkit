@@ -108,8 +108,16 @@ fi
 echo ""
 echo "✓ Claude Toolkit installed!"
 echo ""
-echo "Make sure $BIN_DIR is in your PATH, then:"
-echo "  claude-toolkit              # Interactive dashboard"
-echo "  claude-toolkit list         # List available modules"
-echo "  claude-toolkit install all  # Install all modules"
-echo "  claude-toolkit doctor       # Health check"
+# Launch interactive dashboard if stdout is a terminal
+if [ -t 1 ]; then
+  echo "Launching module installer..."
+  echo ""
+  # Reopen stdin from /dev/tty so the TUI works even when script is piped (curl | sh)
+  "$BIN_DIR/claude-toolkit" </dev/tty
+else
+  echo "Make sure $BIN_DIR is in your PATH, then:"
+  echo "  claude-toolkit              # Interactive dashboard"
+  echo "  claude-toolkit list         # List available modules"
+  echo "  claude-toolkit install all  # Install all modules"
+  echo "  claude-toolkit doctor       # Health check"
+fi
