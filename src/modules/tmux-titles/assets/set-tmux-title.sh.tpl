@@ -13,7 +13,7 @@ marker=$({{tmux}} capture-pane -p -S -100 2>/dev/null | grep '(\$topic:' | tail 
 if [[ -n "$marker" ]]; then
     topic=$(echo "$marker" | sed 's/.*\$topic: *//; s/ *|.*//')
     if [[ -n "$topic" ]]; then
-        {{tmux}} rename-window "$topic" 2>/dev/null
+        {{tmux}} rename-window "✻ $topic" 2>/dev/null
 
         # Write JSON for VS Code extension (atomic write via temp+mv)
         session=$({{tmux}} display-message -p '#{session_name}' 2>/dev/null)
