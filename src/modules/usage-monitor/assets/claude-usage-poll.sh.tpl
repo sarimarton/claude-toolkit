@@ -131,52 +131,95 @@ if $created_session || ! claude_is_running; then
   fi
 fi
 
-# --- Phase: send ---
-write_phase "send"
-$TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
-sleep 0.5
-# Dismiss feedback dialog if present ("How is Claude doing this session?")
-if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -q "How is Claude doing"; then
-  $TMUX_BIN send-keys -t "$SESSION" "0" 2>/dev/null
-  sleep 1
-fi
-# Type "/usage", dismiss autocomplete with Escape, then Enter to execute.
-$TMUX_BIN send-keys -t "$SESSION" "/usage" 2>/dev/null
-sleep 0.5
-$TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
-sleep 0.3
-$TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
-
-# --- Phase: wait ---
-# Poll pane content until data appears, error is detected, or timeout.
-# No aggressive retries — if the API is down, accept it gracefully.
-write_phase "wait"
-MAX_ATTEMPTS=30
-attempt=0
-while [ $attempt -lt $MAX_ATTEMPTS ]; do
-  # Fast polling (0.2s) for the first 3s, then slower (1s) until timeout
-  if [ $attempt -lt 15 ]; then
-    sleep 0.2
-  else
+# Helper: send /usage command and wait for result
+send_usage_and_wait() {
+  $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
+  sleep 0.5
+  # Dismiss feedback dialog if present ("How is Claude doing this session?")
+  if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -q "How is Claude doing"; then
+    $TMUX_BIN send-keys -t "$SESSION" "0" 2>/dev/null
     sleep 1
   fi
-  attempt=$((attempt + 1))
-  content=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
-  # Success: usage data loaded
-  if echo "$content" | grep -q "% used"; then
-    break
-  fi
-  # API error: don't retry, just report it.
-  # Rate limit errors go to parse phase (handled as pct=100 there).
-  if echo "$content" | grep -q "Failed to load usage data"; then
-    if echo "$content" | grep -q "rate_limit_error"; then
-      break  # let parser handle it
+  # Type "/usage", dismiss autocomplete with Escape, then Enter to execute.
+  $TMUX_BIN send-keys -t "$SESSION" "/usage" 2>/dev/null
+  sleep 0.5
+  $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
+  sleep 0.3
+  $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
+
+  # Poll pane content until data appears, error is detected, or timeout.
+  local MAX_ATTEMPTS=30
+  local attempt=0
+  while [ $attempt -lt $MAX_ATTEMPTS ]; do
+    # Fast polling (0.2s) for the first 3s, then slower (1s) until timeout
+    if [ $attempt -lt 15 ]; then
+      sleep 0.2
+    else
+      sleep 1
     fi
-    diag=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -v '^$' | tail -10)
-    $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
-    write_error_with_diag "usage_unavailable" "$diag"
+    attempt=$((attempt + 1))
+    content=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+    # Success: usage data loaded
+    if echo "$content" | grep -q "% used"; then
+      return 0
+    fi
+    # Dialog dismissed = stale Claude instance (API hanging, then timeout)
+    # Only count dismissals that happened AFTER we sent /usage (last occurrence)
+    if echo "$content" | tail -5 | grep -q "Status dialog dismissed"; then
+      return 2
+    fi
+    # API error: don't retry, just report it.
+    # Rate limit errors go to parse phase (handled as pct=100 there).
+    if echo "$content" | grep -q "Failed to load usage data"; then
+      if echo "$content" | grep -q "rate_limit_error"; then
+        return 0  # let parser handle it
+      fi
+      return 1
+    fi
+  done
+  return 1  # timeout
+}
+
+# --- Phase: send ---
+write_phase "send"
+
+# --- Phase: wait ---
+write_phase "wait"
+send_usage_and_wait
+wait_rc=$?
+
+# If dialog was dismissed, the Claude instance is likely stale — restart and retry once
+if [ $wait_rc -eq 2 ]; then
+  write_phase "restart"
+  $TMUX_BIN send-keys -t "$SESSION" "/exit" Enter 2>/dev/null
+  sleep 3
+  # Clear scrollback so old "Status dialog dismissed" lines don't confuse the parser
+  $TMUX_BIN clear-history -t "$SESSION" 2>/dev/null
+  # Start fresh Claude instance
+  $TMUX_BIN send-keys -t "$SESSION" "unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions" Enter
+  for attempt in 1 2 3 4 5 6; do
+    sleep 2
+    pane=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null)
+    if echo "$pane" | grep -q "trust this folder"; then
+      $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
+      sleep 3
+      break
+    fi
+    if echo "$pane" | grep -qE "^❯"; then
+      break
+    fi
+  done
+  if claude_is_running; then
+    send_usage_and_wait
+    wait_rc=$?
   fi
-done
+fi
+
+if [ $wait_rc -eq 1 ]; then
+  diag=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -v '^$' | tail -10)
+  $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
+  write_error_with_diag "usage_unavailable" "$diag"
+fi
 
 # --- Phase: parse ---
 write_phase "parse"
