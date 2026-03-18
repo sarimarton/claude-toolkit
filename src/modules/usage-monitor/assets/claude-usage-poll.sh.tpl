@@ -102,6 +102,16 @@ fi
 
 # --- Phase: claude ---
 write_phase "claude"
+
+# Handle trust dialog from a previous stuck session before checking claude_is_running.
+# The trust dialog's last line ("Enter to confirm") doesn't end with "$",
+# so claude_is_running() would wrongly report Claude as running.
+pane=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null)
+if echo "$pane" | grep -q "trust this folder"; then
+  $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
+  sleep 3
+fi
+
 if $created_session || ! claude_is_running; then
   write_phase "start"
   if ! $created_session; then
