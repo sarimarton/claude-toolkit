@@ -62,16 +62,19 @@ if [[ -f "$SIGNAL" ]]; then
 fi
 
 # Reattach to orphaned ghostty session from previous Ghostty quit/restart
+# Only during restore (QUIT_MARKER present) — normal new tabs always get fresh sessions.
 # Sort by creation time (oldest first) so tab order is preserved on restore.
 # rename-session is the atomic "claim" — if two tabs race, one rename fails (name gone)
-rm -f "$QUIT_MARKER"
-for s in $({{tmux}} list-sessions -F '#{session_created} #{session_name} #{session_attached}' 2>/dev/null \
-    | sort -n | awk '/ghostty_/ && $3 == "0" { print $2 }'); do
-    {{tmux}} rename-session -t "$s" "$SESSION" 2>/dev/null || continue
-    {{tmux}} attach-session -t "$SESSION"
-    cleanup "$SESSION"
-    exit 0
-done
+if [[ -f "$QUIT_MARKER" ]]; then
+    rm -f "$QUIT_MARKER"
+    for s in $({{tmux}} list-sessions -F '#{session_created} #{session_name} #{session_attached}' 2>/dev/null \
+        | sort -n | awk '/ghostty_/ && $3 == "0" { print $2 }'); do
+        {{tmux}} rename-session -t "$s" "$SESSION" 2>/dev/null || continue
+        {{tmux}} attach-session -t "$SESSION"
+        cleanup "$SESSION"
+        exit 0
+    done
+fi
 
 # No orphans → fresh zsh session
 {{tmux}} new-session -s "$SESSION"
