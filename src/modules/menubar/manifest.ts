@@ -14,7 +14,7 @@ export const manifest: ModuleManifest = {
     { binary: 'claude', description: 'Claude Code CLI', required: true },
   ],
   hooks: [],
-  postUninstall: 'open "swiftbar://refreshallplugins" 2>/dev/null; true',
+  postUninstall: 'killall SwiftBar 2>/dev/null; sleep 0.5; open -a SwiftBar 2>/dev/null; true',
   assets: [
     {
       source: 'claude.10s.sh.tpl',
