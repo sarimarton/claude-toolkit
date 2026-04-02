@@ -31,27 +31,25 @@ PRIMARY_ACCOUNT=""
 ALL_ACCOUNTS=""
 if [ -f "$CONFIG_FILE" ]; then
   account_info=$(python3 -c "
+import re
 try:
-    import yaml
-    with open('$CONFIG_FILE') as f:
-        cfg = yaml.safe_load(f) or {}
-    accounts = cfg.get('accounts', [])
-    if not accounts:
-        print()
-    else:
-        primary = ''
-        names = []
-        for a in accounts:
-            n = a.get('name', '')
-            if n:
-                names.append(n)
-                if a.get('primary') or not primary:
-                    primary = n
-        print(primary)
-        for n in names:
-            print(n)
-except:
-    print()
+    text = open('$CONFIG_FILE').read()
+    m = re.search(r'^accounts:\s*\n((?:[ \t]+.*\n)*)', text, re.MULTILINE)
+    if not m: exit()
+    block = m.group(1)
+    names = []; primary = ''
+    for entry in re.split(r'(?=\s*-\s+name:)', block):
+        nm = re.search(r'name:\s*(\S+)', entry)
+        if not nm: continue
+        n = nm.group(1)
+        names.append(n)
+        if 'primary' in entry and re.search(r'primary:\s*true', entry):
+            primary = n
+    if not names: exit()
+    if not primary: primary = names[0]
+    print(primary)
+    for n in names: print(n)
+except: pass
 " 2>/dev/null)
   if [ -n "$account_info" ]; then
     PRIMARY_ACCOUNT=$(echo "$account_info" | head -1)

@@ -20,19 +20,20 @@ USAGE_DIR="{{home}}/.local/share/claude-usage"
 # If no accounts configured, returns empty (triggers legacy single-account mode).
 discover_accounts() {
   python3 -c "
-import sys
+import re
 try:
-    import yaml
-    with open('$CONFIG_FILE') as f:
-        cfg = yaml.safe_load(f) or {}
-    accounts = cfg.get('accounts', [])
-    for a in accounts:
-        name = a.get('name', '')
-        token = a.get('token', '')
-        if name and token:
-            print(name + '\t' + token)
-except Exception:
-    pass
+    text = open('$CONFIG_FILE').read()
+    # Find the accounts: block (everything indented after 'accounts:')
+    m = re.search(r'^accounts:\s*\n((?:[ \t]+.*\n)*)', text, re.MULTILINE)
+    if not m: exit()
+    block = m.group(1)
+    # Split into entries by '- name:' and extract name + token
+    for entry in re.split(r'(?=\s*-\s+name:)', block):
+        nm = re.search(r'name:\s*(\S+)', entry)
+        tk = re.search(r'token:\s*(\S+)', entry)
+        if nm and tk:
+            print(nm.group(1) + '\t' + tk.group(1))
+except: pass
 " 2>/dev/null
 }
 
