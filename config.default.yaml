@@ -13,3 +13,13 @@
 chart:
   planMonthlyCost: 150       # Your plan's monthly cost in USD
   apiCostPerSessionPct: 0.20 # Estimated API cost per 1% of a 5h session window
+
+# Multi-account usage monitoring (optional)
+# Each account gets its own tmux session and JSONL log.
+# The 'primary' account is displayed in the menubar title.
+# accounts:
+#   - name: Alice
+#     token: sk-ant-oat01-...
+#     primary: true
+#   - name: Bob
+#     token: sk-ant-oat01-...

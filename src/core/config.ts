@@ -15,6 +15,11 @@ interface UserConfig {
     planMonthlyCost?: number;
     apiCostPerSessionPct?: number;
   };
+  accounts?: Array<{
+    name: string;
+    token: string;
+    primary?: boolean;
+  }>;
 }
 
 /** Find a binary in PATH, return full path or fallback */
@@ -72,6 +77,12 @@ export function resolveConfig(): ResolvedConfig {
     claudeDir: path.join(HOME, '.claude'),
     chartPlanCost: user.chart?.planMonthlyCost ?? 150,
     chartApiRate: user.chart?.apiCostPerSessionPct ?? 0.20,
+    accounts: (user.accounts || []).map(a => ({
+      name: a.name,
+      token: a.token,
+      primary: a.primary ?? false,
+    })),
+    configFile: CONFIG_FILE,
   };
 }
 

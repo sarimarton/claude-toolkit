@@ -18,12 +18,55 @@
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-USAGE_FILE="/tmp/claude-usage.json"
 POLL_SCRIPT="{{scripts_dir}}/claude-usage-poll.sh"
 TMUX_BIN={{tmux}}
 HELPERS="{{scripts_dir}}"
 SHOW_REMAINING=true
 HOME_DIR="{{home}}"
+CONFIG_FILE="{{config_file}}"
+
+# ── Multi-account: determine primary account ────────────
+MULTI_ACCOUNT=false
+PRIMARY_ACCOUNT=""
+ALL_ACCOUNTS=""
+if [ -f "$CONFIG_FILE" ]; then
+  account_info=$(python3 -c "
+try:
+    import yaml
+    with open('$CONFIG_FILE') as f:
+        cfg = yaml.safe_load(f) or {}
+    accounts = cfg.get('accounts', [])
+    if not accounts:
+        print()
+    else:
+        primary = ''
+        names = []
+        for a in accounts:
+            n = a.get('name', '')
+            if n:
+                names.append(n)
+                if a.get('primary') or not primary:
+                    primary = n
+        print(primary)
+        for n in names:
+            print(n)
+except:
+    print()
+" 2>/dev/null)
+  if [ -n "$account_info" ]; then
+    PRIMARY_ACCOUNT=$(echo "$account_info" | head -1)
+    ALL_ACCOUNTS=$(echo "$account_info" | tail -n +2)
+    acct_count=$(echo "$ALL_ACCOUNTS" | wc -l | tr -d ' ')
+    (( acct_count > 1 )) && MULTI_ACCOUNT=true
+  fi
+fi
+
+# Derive file paths from primary account
+if [ -n "$PRIMARY_ACCOUNT" ]; then
+  USAGE_FILE="/tmp/claude-usage-${PRIMARY_ACCOUNT}.json"
+else
+  USAGE_FILE="/tmp/claude-usage.json"
+fi
 
 # ── JSON helpers (pure bash — no python3 overhead) ───────
 
@@ -168,6 +211,7 @@ if [[ -n "$pct" ]]; then
     title="${A_LOGO}✻ ${pct_a}${display_pct}%"
     $weekly_capped && title="$title${A_YELLOW}W"
     [[ -n "$mins_left" ]] && title="$title ${A_DIM}($(format_time $mins_left))"
+    $MULTI_ACCOUNT && title="$title ${A_DIM}$PRIMARY_ACCOUNT"
     echo "${title}${A_RST} | ansi=true size=12"
 elif [[ "$error" == "usage_unavailable" ]]; then
     echo "${A_LOGO}✻ ${A_YELLOW}⚠${A_RST} | ansi=true size=12"
@@ -372,10 +416,41 @@ if ! $has_sessions; then
     echo "No active sessions | size=11 color=#888888 sfimage=moon.zzz"
 fi
 
+# ── Other accounts (multi-account mode) ─────────────────
+
+if $MULTI_ACCOUNT; then
+    echo "---"
+    json_num_file()  { grep -oE "\"$1\":[[:space:]]*[0-9]+" "$2" 2>/dev/null | head -1 | grep -o '[0-9]*$' ; }
+    json_str_file()  { grep -oE "\"$1\":[[:space:]]*\"[^\"]*\"" "$2" 2>/dev/null | head -1 | sed "s/\"$1\":[[:space:]]*\"//;s/\"$//" ; }
+    while IFS= read -r acct; do
+        [[ "$acct" == "$PRIMARY_ACCOUNT" ]] && continue
+        acct_file="/tmp/claude-usage-${acct}.json"
+        if [[ -f "$acct_file" ]]; then
+            apct=$(json_num_file pct "$acct_file")
+            aerr=$(json_str_file error "$acct_file")
+            if [[ -n "$apct" ]]; then
+                if $SHOW_REMAINING; then adisp=$((100 - apct)); else adisp=$apct; fi
+                acolor=$(pct_color $adisp)
+                echo "${acct}: ${adisp}% | color=$acolor size=12"
+            elif [[ -n "$aerr" ]]; then
+                echo "${acct}: $aerr | color=#888888 size=12"
+            else
+                echo "${acct}: -- | color=#888888 size=12"
+            fi
+        else
+            echo "${acct}: no data | color=#888888 size=12"
+        fi
+    done <<< "$ALL_ACCOUNTS"
+fi
+
 # ── Controls ─────────────────────────────────────────────
 
 echo "---"
 echo "Refresh now | bash=$POLL_SCRIPT terminal=false refresh=true shortcut=CMD+OPT+R"
 echo "Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
-echo "View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/usage.jsonl terminal=false"
-echo "Stop monitor | bash=$TMUX_BIN param1=kill-session param2=-t param3=claude_usage_mon terminal=false refresh=true"
+echo "View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/ terminal=false"
+if $MULTI_ACCOUNT; then
+    echo "Stop all monitors | bash=/usr/bin/env param1=bash param2=-c param3=\"$TMUX_BIN ls -F '#{session_name}' 2>/dev/null | grep '^claude_usage_mon' | xargs -I{} $TMUX_BIN kill-session -t {}\" terminal=false refresh=true"
+else
+    echo "Stop monitor | bash=$TMUX_BIN param1=kill-session param2=-t param3=claude_usage_mon terminal=false refresh=true"
+fi

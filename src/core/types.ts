@@ -1,3 +1,10 @@
+/** Account configuration for multi-account usage monitoring */
+export interface AccountConfig {
+  name: string;
+  token: string;
+  primary?: boolean;
+}
+
 /** Supported platforms */
 export type Platform = 'darwin' | 'linux';
 
@@ -123,6 +130,10 @@ export interface ResolvedConfig {
   chartPlanCost: number;
   /** Chart cost estimation: estimated API cost per 1% of session */
   chartApiRate: number;
+  /** Multi-account configurations */
+  accounts: AccountConfig[];
+  /** Path to the config file (for runtime reading by scripts) */
+  configFile: string;
 }
 
 /** Sidecar manifest entry — tracks which module owns which hooks */
