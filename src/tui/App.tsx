@@ -4,6 +4,7 @@ import { StatusTable } from './StatusTable.js';
 import { InstallProgress } from './InstallProgress.js';
 import { DoctorReport } from './DoctorReport.js';
 import { ModuleTree } from './ModuleTree.js';
+import { UsageChart } from './UsageChart.js';
 
 interface AppProps {
   command: string;
@@ -28,6 +29,9 @@ export function App({ command, args, flags }: AppProps) {
 
     case 'upgrade':
       return <InstallProgress modules={[]} autoConfirm={flags.yes} upgrade />;
+
+    case 'chart':
+      return <UsageChart />;
 
     case 'dashboard':
       return <ModuleTree />;

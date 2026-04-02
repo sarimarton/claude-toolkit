@@ -376,5 +376,6 @@ fi
 
 echo "---"
 echo "Refresh now | bash=$POLL_SCRIPT terminal=false refresh=true shortcut=CMD+OPT+R"
+echo "Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
 echo "View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/usage.jsonl terminal=false"
 echo "Stop monitor | bash=$TMUX_BIN param1=kill-session param2=-t param3=claude_usage_mon terminal=false refresh=true"

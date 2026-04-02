@@ -19,5 +19,11 @@ export const manifest: ModuleManifest = {
       filename: 'claude-usage-poll.sh',
       executable: true,
     },
+    {
+      source: 'usage-chart.sh.tpl',
+      target: 'scripts',
+      filename: 'usage-chart.sh',
+      executable: true,
+    },
   ],
 };

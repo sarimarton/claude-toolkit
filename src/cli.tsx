@@ -13,6 +13,7 @@ const cli = meow(`
     $ claude-toolkit status           Per-module health check
     $ claude-toolkit doctor           Full integrity audit
     $ claude-toolkit upgrade          Re-template installed modules
+    $ claude-toolkit chart            Open usage chart in browser
 
   Options
     --help       Show this help
