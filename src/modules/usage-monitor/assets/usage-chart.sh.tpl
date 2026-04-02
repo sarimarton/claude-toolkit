@@ -122,6 +122,56 @@ if isinstance(current_weekly, (int, float)):
     current_weekly = str(current_weekly) + "%"
 gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+# ── Cost estimation ────────────────────────────────────
+# Configurable parameters
+PLAN_MONTHLY_COST = 200        # Max plan $/month
+API_COST_PER_SESSION_PCT = 0.20  # Estimated API $/1% of a 5h session window (Opus pricing)
+
+# Group windows by month, track max pct per window (= total consumed in that window)
+window_max_pct = {}
+for d in data:
+    wid = d.get("window_id", "?")
+    month = datetime.fromtimestamp(d["ts"]).strftime("%Y-%m")
+    key = (month, wid)
+    if key not in window_max_pct or d["pct"] > window_max_pct[key]:
+        window_max_pct[key] = d["pct"]
+
+# Monthly aggregation
+monthly_stats = defaultdict(lambda: {"windows": 0, "total_pct": 0, "weekly_samples": []})
+for (month, wid), max_pct in window_max_pct.items():
+    monthly_stats[month]["windows"] += 1
+    monthly_stats[month]["total_pct"] += max_pct
+
+# Collect weekly_pct samples per month (last reading per week)
+weekly_by_month = defaultdict(dict)
+for d in data:
+    wp = d.get("weekly_pct")
+    if wp is None:
+        continue
+    month = datetime.fromtimestamp(d["ts"]).strftime("%Y-%m")
+    week = datetime.fromtimestamp(d["ts"]).strftime("%Y-W%W")
+    weekly_by_month[month][week] = wp  # last reading wins
+
+for month, weeks in weekly_by_month.items():
+    monthly_stats[month]["weekly_samples"] = list(weeks.values())
+
+cost_rows = []
+for month in sorted(monthly_stats.keys()):
+    ms = monthly_stats[month]
+    # Subscription effective cost: avg weekly utilization * plan cost
+    weekly_avg = sum(ms["weekly_samples"]) / len(ms["weekly_samples"]) if ms["weekly_samples"] else 0
+    sub_effective = round(PLAN_MONTHLY_COST * weekly_avg / 100, 2)
+    # API equivalent: sum of all session % consumed * rate
+    api_equiv = round(ms["total_pct"] * API_COST_PER_SESSION_PCT, 2)
+    cost_rows.append({
+        "month": month,
+        "windows": ms["windows"],
+        "total_pct": ms["total_pct"],
+        "weekly_avg": round(weekly_avg, 1),
+        "sub_effective": sub_effective,
+        "api_equiv": api_equiv,
+    })
+
 # ── Inject data as JSON ────────────────────────────────
 DATA_JSON = json.dumps({
     "sessionDatasets": session_datasets,
@@ -131,6 +181,9 @@ DATA_JSON = json.dumps({
     "windowBoundaries": window_boundaries,
     "heatmapData": heatmap_data,
     "days": days_set,
+    "costRows": cost_rows,
+    "planCost": PLAN_MONTHLY_COST,
+    "apiRate": API_COST_PER_SESSION_PCT,
 }, separators=(",", ":"))
 
 # ── HTML template (no f-strings — avoids {{}} conflicts) ─
@@ -176,6 +229,15 @@ HTML = r"""<!DOCTYPE html>
   }
   .stat-value { font-size: 1.8rem; font-weight: 700; color: #f0a040; }
   .stat-label { font-size: 0.8rem; color: #888; margin-top: 4px; }
+  .cost-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  .cost-table th { text-align: left; color: #888; font-weight: 500; font-size: 0.8rem;
+    padding: 6px 12px; border-bottom: 1px solid #2a2a4a; }
+  .cost-table td { padding: 8px 12px; font-size: 0.9rem; border-bottom: 1px solid #1a1a2e; }
+  .cost-table tr:hover td { background: #1a2540; }
+  .cost-sub { color: #f0a040; }
+  .cost-api { color: #508ce6; }
+  .cost-note { color: #666; font-size: 0.75rem; margin-top: 12px; line-height: 1.5; }
+  .cost-params { color: #555; font-size: 0.7rem; margin-top: 4px; font-family: monospace; }
 </style>
 </head>
 <body>
@@ -218,6 +280,33 @@ HTML = r"""<!DOCTYPE html>
   <h2>Usage Timeline</h2>
   <p class="desc">Session % (orange) and weekly % (blue) over absolute time. Vertical lines = window boundaries.</p>
   <canvas id="timelineChart"></canvas>
+</div>
+
+<div class="chart-container">
+  <h2>Estimated Cost Comparison</h2>
+  <p class="desc">Monthly breakdown: subscription effective value vs. estimated pay-as-you-go API equivalent.</p>
+  <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px;">
+    <canvas id="costChart" style="max-height:250px; flex:1; min-width:400px;"></canvas>
+    <div style="flex:1; min-width:300px;">
+      <table class="cost-table">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Windows</th>
+            <th>Weekly avg</th>
+            <th class="cost-sub">Sub effective</th>
+            <th class="cost-api">API equiv</th>
+          </tr>
+        </thead>
+        <tbody id="costTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <p class="cost-note">
+    <strong>Sub effective</strong> = plan cost &times; avg weekly utilization. If you use 30% of your weekly quota on avg, you're getting $%%SUB_EFF_EXAMPLE%% of value from a $%%PLAN_COST%%/mo plan.<br>
+    <strong>API equiv</strong> = sum of session % consumed &times; estimated $/1% rate. Rough Opus-based estimate &mdash; actual API cost depends on prompt length, model, and caching.
+  </p>
+  <p class="cost-params">Parameters: PLAN_MONTHLY_COST=$%%PLAN_COST%% &middot; API_COST_PER_SESSION_PCT=$%%API_RATE%%</p>
 </div>
 
 <div class="chart-container">
@@ -359,7 +448,67 @@ new Chart(document.getElementById('timelineChart'), {
   }
 });
 
-// ── Chart 3: Heatmap (canvas 2D) ──────────────────────
+// ── Cost comparison chart + table ─────────────────────
+(function() {
+  var rows = _D.costRows;
+  var tbody = document.getElementById('costTableBody');
+  var months = [], subVals = [], apiVals = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    months.push(r.month);
+    subVals.push(r.sub_effective);
+    apiVals.push(r.api_equiv);
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + r.month + '</td><td>' + r.windows + '</td><td>' + r.weekly_avg + '%</td>'
+      + '<td class="cost-sub">$' + r.sub_effective.toFixed(0) + '</td>'
+      + '<td class="cost-api">$' + r.api_equiv.toFixed(0) + '</td>';
+    tbody.appendChild(tr);
+  }
+  new Chart(document.getElementById('costChart'), {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [
+        {
+          label: 'Subscription effective',
+          data: subVals,
+          backgroundColor: 'rgba(240, 160, 64, 0.7)',
+          borderColor: 'rgba(240, 160, 64, 1)',
+          borderWidth: 1,
+        },
+        {
+          label: 'API equivalent',
+          data: apiVals,
+          backgroundColor: 'rgba(80, 140, 230, 0.7)',
+          borderColor: 'rgba(80, 140, 230, 1)',
+          borderWidth: 1,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: {
+        legend: { display: true, labels: { color: '#888' } },
+        tooltip: {
+          callbacks: {
+            label: function(item) { return item.dataset.label + ': $' + item.parsed.y.toFixed(0); }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#666' }, grid: { color: '#2a2a4a' } },
+        y: {
+          title: { display: true, text: 'USD', color: '#888' },
+          ticks: { color: '#666', callback: function(v) { return '$' + v; } },
+          grid: { color: '#2a2a4a' }
+        }
+      }
+    }
+  });
+})();
+
+// ── Chart 4: Heatmap (canvas 2D) ──────────────────────
 (function() {
   var canvas = document.getElementById('heatmapCanvas');
   var ctx = canvas.getContext('2d');
@@ -460,6 +609,9 @@ for key, val in [
     ("%%AVG_PEAK%%", str(avg_peak)),
     ("%%CURRENT_WEEKLY%%", str(current_weekly)),
     ("%%GEN_TIME%%", gen_time),
+    ("%%PLAN_COST%%", str(PLAN_MONTHLY_COST)),
+    ("%%API_RATE%%", str(API_COST_PER_SESSION_PCT)),
+    ("%%SUB_EFF_EXAMPLE%%", str(int(PLAN_MONTHLY_COST * 0.3))),
 ]:
     HTML = HTML.replace(key, val)
 
