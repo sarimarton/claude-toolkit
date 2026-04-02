@@ -6,6 +6,7 @@ import { resolveInstall, resolveUninstall } from '../core/dependency-resolver.js
 import { registerHooks, unregisterHooks } from '../core/settings-manager.js';
 import { buildVarMap, renderTemplate, installTemplate } from '../core/template-engine.js';
 import type { ModuleManifest, ResolvedConfig } from '../core/types.js';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
@@ -60,6 +61,12 @@ function doInstall(manifest: ModuleManifest, config: ResolvedConfig, modulesDir:
     }));
     registerHooks(config, manifest.id, resolvedHooks);
   }
+
+  // Run post-install command
+  if (manifest.postInstall) {
+    const cmd = renderTemplate(manifest.postInstall, vars);
+    execSync(cmd, { stdio: 'pipe' });
+  }
 }
 
 function doUninstall(manifest: ModuleManifest, config: ResolvedConfig): void {
@@ -81,6 +88,17 @@ function doUninstall(manifest: ModuleManifest, config: ResolvedConfig): void {
 
   // Unregister hooks
   unregisterHooks(config, manifest.id);
+
+  // Run post-uninstall command
+  if (manifest.postUninstall) {
+    const vars = buildVarMap(config);
+    const cmd = renderTemplate(manifest.postUninstall, vars);
+    try {
+      execSync(cmd, { stdio: 'pipe' });
+    } catch {
+      // Best-effort cleanup
+    }
+  }
 }
 
 export function InstallProgress({ modules, autoConfirm, uninstall, upgrade }: Props) {

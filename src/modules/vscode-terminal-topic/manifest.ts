@@ -13,5 +13,14 @@ export const manifest: ModuleManifest = {
     { binary: 'code', description: 'VS Code CLI', required: true, installHint: 'Install VS Code and add "code" to PATH' },
   ],
   hooks: [],
-  assets: [],
+  assets: [
+    {
+      source: 'install-ext.sh.tpl',
+      target: 'scripts',
+      filename: 'vscode-terminal-topic-install.sh',
+      executable: true,
+    },
+  ],
+  postInstall: '{{scripts_dir}}/vscode-terminal-topic-install.sh install',
+  postUninstall: '{{scripts_dir}}/vscode-terminal-topic-install.sh uninstall',
 };

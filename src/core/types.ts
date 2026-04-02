@@ -87,6 +87,10 @@ export interface ModuleManifest {
   assets: AssetDefinition[];
   /** Slash commands to install */
   commands?: AssetDefinition[];
+  /** Command template to run after install (e.g. for custom build steps) */
+  postInstall?: string;
+  /** Command template to run after uninstall (e.g. for cleanup) */
+  postUninstall?: string;
 }
 
 /** Resolved paths from config + auto-detection */
