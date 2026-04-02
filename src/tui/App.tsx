@@ -22,6 +22,7 @@ export function App({ command, args, flags }: AppProps) {
       return <InstallProgress modules={args} autoConfirm={flags.yes} />;
 
     case 'uninstall':
+      if (args.length === 0) return <ModuleTree />;
       return <InstallProgress modules={args} autoConfirm={flags.yes} uninstall />;
 
     case 'doctor':

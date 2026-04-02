@@ -26,8 +26,9 @@ claude-toolkit upgrade
 ## Uninstall
 
 ```bash
+claude-toolkit uninstall            # Dashboard — select modules, press 'u'
 claude-toolkit uninstall <module>   # Remove specific module(s)
-claude-toolkit                      # Or use the dashboard: select + 'u'
+claude-toolkit uninstall all        # Remove all modules
 ```
 
 To remove the entire toolkit:

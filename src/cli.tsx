@@ -9,7 +9,9 @@ const cli = meow(`
     $ claude-toolkit                  Interactive dashboard
     $ claude-toolkit list             List all modules with status
     $ claude-toolkit install [mod..]  Install modules (auto-resolves deps)
-    $ claude-toolkit uninstall [mod.] Uninstall modules (cascade check)
+    $ claude-toolkit uninstall         Dashboard (select + u to uninstall)
+    $ claude-toolkit uninstall [mod..] Uninstall specific modules
+    $ claude-toolkit uninstall all     Uninstall all modules
     $ claude-toolkit status           Per-module health check
     $ claude-toolkit doctor           Full integrity audit
     $ claude-toolkit upgrade          Re-template installed modules

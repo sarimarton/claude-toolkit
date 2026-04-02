@@ -125,10 +125,19 @@ export function InstallProgress({ modules, autoConfirm, uninstall, upgrade }: Pr
       modules = [...installed];
     }
 
+    if (uninstall && modules.length === 1 && modules[0] === 'all') {
+      const installed = getInstalledModuleIds(config);
+      if (installed.size === 0) {
+        setMessage('No modules installed.');
+        setPhase('done');
+        setTimeout(() => exit(), 100);
+        return;
+      }
+      modules = [...installed];
+    }
+
     if (modules.length === 0 && !upgrade) {
-      setMessage(uninstall
-        ? 'No modules specified. Use: claude-toolkit uninstall <module>'
-        : 'No modules specified. Use: claude-toolkit install <module>');
+      setMessage('No modules specified. Use: claude-toolkit install <module>');
       setPhase('done');
       setTimeout(() => exit(), 100);
       return;
