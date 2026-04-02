@@ -8,3 +8,8 @@
 #   jq: /opt/homebrew/bin/jq
 #   claude: ~/.local/bin/claude
 #   hs: /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs
+
+# Usage chart cost estimation parameters
+chart:
+  planMonthlyCost: 150       # Your plan's monthly cost in USD
+  apiCostPerSessionPct: 0.20 # Estimated API cost per 1% of a 5h session window

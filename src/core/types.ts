@@ -119,6 +119,10 @@ export interface ResolvedConfig {
   helpersDir: string;
   /** Claude settings directory (~/.claude) */
   claudeDir: string;
+  /** Chart cost estimation: plan monthly cost in USD */
+  chartPlanCost: number;
+  /** Chart cost estimation: estimated API cost per 1% of session */
+  chartApiRate: number;
 }
 
 /** Sidecar manifest entry — tracks which module owns which hooks */

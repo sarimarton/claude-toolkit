@@ -17,6 +17,8 @@ export function buildVarMap(config: ResolvedConfig): Record<string, string> {
     swiftbar_dir: config.swiftbarDir,
     helpers_dir: config.helpersDir,
     claude_dir: config.claudeDir,
+    chart_plan_cost: String(config.chartPlanCost),
+    chart_api_rate: String(config.chartApiRate),
   };
 }
 

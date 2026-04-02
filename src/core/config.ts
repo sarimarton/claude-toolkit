@@ -11,6 +11,10 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
 interface UserConfig {
   paths?: Record<string, string>;
   installDir?: string;
+  chart?: {
+    planMonthlyCost?: number;
+    apiCostPerSessionPct?: number;
+  };
 }
 
 /** Find a binary in PATH, return full path or fallback */
@@ -66,6 +70,8 @@ export function resolveConfig(): ResolvedConfig {
     swiftbarDir,
     helpersDir,
     claudeDir: path.join(HOME, '.claude'),
+    chartPlanCost: user.chart?.planMonthlyCost ?? 150,
+    chartApiRate: user.chart?.apiCostPerSessionPct ?? 0.20,
   };
 }
 

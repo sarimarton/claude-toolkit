@@ -19,7 +19,10 @@ if [[ ! -f "$USAGE_LOG" ]]; then
   exit 1
 fi
 
-export USAGE_LOG
+PLAN_MONTHLY_COST="{{chart_plan_cost}}"
+API_COST_PER_SESSION_PCT="{{chart_api_rate}}"
+
+export USAGE_LOG PLAN_MONTHLY_COST API_COST_PER_SESSION_PCT
 python3 << 'PYEOF' > "$OUTPUT"
 import json, sys, os
 from datetime import datetime
@@ -123,9 +126,8 @@ if isinstance(current_weekly, (int, float)):
 gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
 # ── Cost estimation ────────────────────────────────────
-# Configurable parameters
-PLAN_MONTHLY_COST = 200        # Max plan $/month
-API_COST_PER_SESSION_PCT = 0.20  # Estimated API $/1% of a 5h session window (Opus pricing)
+PLAN_MONTHLY_COST = float(os.environ.get("PLAN_MONTHLY_COST", "150"))
+API_COST_PER_SESSION_PCT = float(os.environ.get("API_COST_PER_SESSION_PCT", "0.20"))
 
 # Group windows by month, track max pct per window (= total consumed in that window)
 window_max_pct = {}
