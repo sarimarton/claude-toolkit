@@ -52,6 +52,9 @@ export function registerHooks(
   moduleId: string,
   hooks: HookRegistration[],
 ): void {
+  // Unregister existing hooks first to make this idempotent (no duplicates on reinstall)
+  unregisterHooks(config, moduleId);
+
   const settings = readSettings(config);
   const sidecar = readSidecar(config);
 

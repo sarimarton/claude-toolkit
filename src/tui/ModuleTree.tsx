@@ -76,20 +76,7 @@ export function ModuleTree() {
         return new Set(statuses.map(s => s.manifest.id));
       });
     } else if (input === 'i') {
-      const toInstall = selected.size > 0 ? [...selected] : [statuses[cursor]?.manifest.id].filter(Boolean);
-      if (toInstall.length === 0) return;
-      const manifests = getAllManifests();
-      const result = resolveInstall(toInstall, manifests);
-      if (result.error) {
-        setMessage(result.error);
-        return;
-      }
-      setMessage(
-        `Install: ${result.order.join(', ')}` +
-        (result.autoAdded.length > 0 ? ` (auto: ${result.autoAdded.join(', ')})` : '') +
-        ' — [y/n]?'
-      );
-      setMode('confirm-install');
+      executeInstall();
     } else if (input === 'u') {
       const toUninstall = selected.size > 0 ? [...selected] : [statuses[cursor]?.manifest.id].filter(Boolean);
       if (toUninstall.length === 0) return;
