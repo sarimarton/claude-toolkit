@@ -198,14 +198,14 @@ write_phase "wait"
 send_usage_and_wait
 wait_rc=$?
 
-# If dialog was dismissed, the Claude instance is likely stale — restart and retry once
+# If dialog was dismissed, the Claude instance is likely stale — kill the entire
+# tmux session and recreate from scratch (just restarting Claude inside the same
+# session often fails when the instance has been running for days).
 if [ $wait_rc -eq 2 ]; then
   write_phase "restart"
-  $TMUX_BIN send-keys -t "$SESSION" "/exit" Enter 2>/dev/null
-  sleep 3
-  # Clear scrollback so old "Status dialog dismissed" lines don't confuse the parser
-  $TMUX_BIN clear-history -t "$SESSION" 2>/dev/null
-  # Start fresh Claude instance
+  $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
+  sleep 1
+  $TMUX_BIN new-session -d -s "$SESSION" -x 200 -y 50 -c "$HOME"
   $TMUX_BIN send-keys -t "$SESSION" "unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions" Enter
   for attempt in 1 2 3 4 5 6; do
     sleep 2
