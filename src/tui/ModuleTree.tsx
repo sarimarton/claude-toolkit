@@ -110,7 +110,7 @@ export function ModuleTree() {
 
     // Immediate feedback — then defer heavy work so Ink can render
     setMode('executing');
-    setMessage(`Installing ${result.order.join(', ')}…`);
+    setMessage('Installing…');
 
     setTimeout(() => {
       const config = resolveConfig();
@@ -151,8 +151,9 @@ export function ModuleTree() {
 
       setSelected(new Set());
       setStatuses(getAllModuleStatuses(config));
-      setMessage(errors > 0 ? `Install finished with ${errors} error(s): ${errorDetails.join('; ')}` : `Installed ${result.order.length} modules. Press q to exit.`);
+      setMessage(errors > 0 ? `Install finished with ${errors} error(s): ${errorDetails.join('; ')}` : `Installed ${result.order.length} modules.`);
       setMode('done');
+      setTimeout(() => exit(), errors > 0 ? 3000 : 500);
     }, 0);
   }
 
@@ -192,7 +193,8 @@ export function ModuleTree() {
 
     setSelected(new Set());
     setStatuses(getAllModuleStatuses(config));
-    setMessage(`Uninstalled ${result.order.length} modules. Press q to exit.`);
+    setMessage(`Uninstalled ${result.order.length} modules.`);
+    setTimeout(() => exit(), 500);
     setMode('done');
   }
 
