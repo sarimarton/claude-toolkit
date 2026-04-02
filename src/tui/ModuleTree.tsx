@@ -99,50 +99,61 @@ export function ModuleTree() {
   });
 
   function executeInstall() {
-    setMode('executing');
     const toInstall = selected.size > 0 ? [...selected] : [statuses[cursor]?.manifest.id].filter(Boolean);
-    const config = resolveConfig();
-    ensureInstallDirs(config);
+    if (toInstall.length === 0) return;
     const manifests = getAllManifests();
-    const modulesDir = getModulesDir();
     const result = resolveInstall(toInstall, manifests);
-    const vars = buildVarMap(config);
-
-    let errors = 0;
-    const errorDetails: string[] = [];
-    for (const id of result.order) {
-      const manifest = manifests.get(id)!;
-      try {
-        for (const asset of manifest.assets) {
-          const tplPath = path.join(modulesDir, manifest.id, 'assets', asset.source);
-          const targetDir = getTargetDir(config, asset.target);
-          installTemplate(tplPath, path.join(targetDir, asset.filename), vars, asset.executable !== false);
-        }
-        if (manifest.commands) {
-          for (const cmd of manifest.commands) {
-            const tplPath = path.join(modulesDir, manifest.id, 'assets', cmd.source);
-            const targetDir = getTargetDir(config, cmd.target);
-            installTemplate(tplPath, path.join(targetDir, cmd.filename), vars, cmd.executable === true);
-          }
-        }
-        if (manifest.hooks.length > 0) {
-          const resolvedHooks = manifest.hooks.map(h => ({ ...h, command: renderTemplate(h.command, vars) }));
-          registerHooks(config, manifest.id, resolvedHooks);
-        }
-        if (manifest.postInstall) {
-          const cmd = renderTemplate(manifest.postInstall, vars);
-          execSync(cmd, { stdio: 'pipe' });
-        }
-      } catch (err: any) {
-        errors++;
-        errorDetails.push(`${id}: ${err.message}`);
-      }
+    if (result.error) {
+      setMessage(result.error);
+      return;
     }
 
-    setSelected(new Set());
-    setStatuses(getAllModuleStatuses(config));
-    setMessage(errors > 0 ? `Install finished with ${errors} error(s): ${errorDetails.join('; ')}` : `Installed ${result.order.length} modules. Press q to exit.`);
-    setMode('done');
+    // Immediate feedback — then defer heavy work so Ink can render
+    setMode('executing');
+    setMessage(`Installing ${result.order.join(', ')}…`);
+
+    setTimeout(() => {
+      const config = resolveConfig();
+      ensureInstallDirs(config);
+      const modulesDir = getModulesDir();
+      const vars = buildVarMap(config);
+
+      let errors = 0;
+      const errorDetails: string[] = [];
+      for (const id of result.order) {
+        const manifest = manifests.get(id)!;
+        try {
+          for (const asset of manifest.assets) {
+            const tplPath = path.join(modulesDir, manifest.id, 'assets', asset.source);
+            const targetDir = getTargetDir(config, asset.target);
+            installTemplate(tplPath, path.join(targetDir, asset.filename), vars, asset.executable !== false);
+          }
+          if (manifest.commands) {
+            for (const cmd of manifest.commands) {
+              const tplPath = path.join(modulesDir, manifest.id, 'assets', cmd.source);
+              const targetDir = getTargetDir(config, cmd.target);
+              installTemplate(tplPath, path.join(targetDir, cmd.filename), vars, cmd.executable === true);
+            }
+          }
+          if (manifest.hooks.length > 0) {
+            const resolvedHooks = manifest.hooks.map(h => ({ ...h, command: renderTemplate(h.command, vars) }));
+            registerHooks(config, manifest.id, resolvedHooks);
+          }
+          if (manifest.postInstall) {
+            const cmd = renderTemplate(manifest.postInstall, vars);
+            execSync(cmd, { stdio: 'pipe' });
+          }
+        } catch (err: any) {
+          errors++;
+          errorDetails.push(`${id}: ${err.message}`);
+        }
+      }
+
+      setSelected(new Set());
+      setStatuses(getAllModuleStatuses(config));
+      setMessage(errors > 0 ? `Install finished with ${errors} error(s): ${errorDetails.join('; ')}` : `Installed ${result.order.length} modules. Press q to exit.`);
+      setMode('done');
+    }, 0);
   }
 
   function executeUninstall() {
