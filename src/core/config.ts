@@ -65,6 +65,7 @@ export function resolveConfig(): ResolvedConfig {
   return {
     tmux: p.tmux || which('tmux', '/opt/homebrew/bin/tmux'),
     jq: p.jq || which('jq', '/opt/homebrew/bin/jq'),
+    yq: p.yq || which('yq', '/opt/homebrew/bin/yq'),
     claude: p.claude || which('claude', path.join(HOME, '.local/bin/claude')),
     hs: p.hs || '/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs',
     home: HOME,

@@ -10,6 +10,7 @@ export const manifest: ModuleManifest = {
     { binary: 'tmux', description: 'Terminal multiplexer', required: true, installHint: 'brew install tmux' },
     { binary: 'claude', description: 'Claude Code CLI', required: true },
     { binary: 'python3', description: 'Python 3 for parsing', required: true },
+    { binary: 'yq', description: 'YAML processor (for multi-account config)', required: false, installHint: 'brew install yq' },
   ],
   hooks: [],
   assets: [

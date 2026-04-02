@@ -7,6 +7,7 @@ export function buildVarMap(config: ResolvedConfig): Record<string, string> {
   return {
     tmux: config.tmux,
     jq: config.jq,
+    yq: config.yq,
     claude: config.claude,
     hs: config.hs,
     home: config.home,

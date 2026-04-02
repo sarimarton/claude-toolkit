@@ -18,23 +18,10 @@ USAGE_DIR="{{home}}/.local/share/claude-usage"
 # ── Account discovery ───────────────────────────────────
 # Returns lines of "name<TAB>token" pairs.
 # If no accounts configured, returns empty (triggers legacy single-account mode).
+YQ={{yq}}
+
 discover_accounts() {
-  python3 -c "
-import re
-try:
-    text = open('$CONFIG_FILE').read()
-    # Find the accounts: block (everything indented after 'accounts:')
-    m = re.search(r'^accounts:\s*\n((?:[ \t]+.*\n)*)', text, re.MULTILINE)
-    if not m: exit()
-    block = m.group(1)
-    # Split into entries by '- name:' and extract name + token
-    for entry in re.split(r'(?=\s*-\s+name:)', block):
-        nm = re.search(r'name:\s*(\S+)', entry)
-        tk = re.search(r'token:\s*(\S+)', entry)
-        if nm and tk:
-            print(nm.group(1) + '\t' + tk.group(1))
-except: pass
-" 2>/dev/null
+  $YQ -r '.accounts[] | .name + "\t" + .token' "$CONFIG_FILE" 2>/dev/null
 }
 
 # ── Per-account poll function ───────────────────────────

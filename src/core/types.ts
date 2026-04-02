@@ -106,6 +106,8 @@ export interface ResolvedConfig {
   tmux: string;
   /** Path to jq binary */
   jq: string;
+  /** Path to yq binary */
+  yq: string;
   /** Path to claude binary */
   claude: string;
   /** Path to Hammerspoon's hs CLI */

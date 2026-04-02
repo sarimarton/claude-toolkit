@@ -30,27 +30,13 @@ MULTI_ACCOUNT=false
 PRIMARY_ACCOUNT=""
 ALL_ACCOUNTS=""
 if [ -f "$CONFIG_FILE" ]; then
-  account_info=$(python3 -c "
-import re
-try:
-    text = open('$CONFIG_FILE').read()
-    m = re.search(r'^accounts:\s*\n((?:[ \t]+.*\n)*)', text, re.MULTILINE)
-    if not m: exit()
-    block = m.group(1)
-    names = []; primary = ''
-    for entry in re.split(r'(?=\s*-\s+name:)', block):
-        nm = re.search(r'name:\s*(\S+)', entry)
-        if not nm: continue
-        n = nm.group(1)
-        names.append(n)
-        if 'primary' in entry and re.search(r'primary:\s*true', entry):
-            primary = n
-    if not names: exit()
-    if not primary: primary = names[0]
-    print(primary)
-    for n in names: print(n)
-except: pass
-" 2>/dev/null)
+  YQ={{yq}}
+  primary=$($YQ -r '(.accounts[] | select(.primary == true) | .name) // .accounts[0].name' "$CONFIG_FILE" 2>/dev/null)
+  all_names=$($YQ -r '.accounts[].name' "$CONFIG_FILE" 2>/dev/null)
+  account_info=""
+  if [ -n "$primary" ] && [ -n "$all_names" ]; then
+    account_info=$(printf '%s\n%s' "$primary" "$all_names")
+  fi
   if [ -n "$account_info" ]; then
     PRIMARY_ACCOUNT=$(echo "$account_info" | head -1)
     ALL_ACCOUNTS=$(echo "$account_info" | tail -n +2)
