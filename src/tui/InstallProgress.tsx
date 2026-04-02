@@ -126,7 +126,9 @@ export function InstallProgress({ modules, autoConfirm, uninstall, upgrade }: Pr
     }
 
     if (modules.length === 0 && !upgrade) {
-      setMessage(uninstall ? 'No modules specified.' : 'No modules specified. Use: claude-toolkit install <module>');
+      setMessage(uninstall
+        ? 'No modules specified. Use: claude-toolkit uninstall <module>'
+        : 'No modules specified. Use: claude-toolkit install <module>');
       setPhase('done');
       setTimeout(() => exit(), 100);
       return;

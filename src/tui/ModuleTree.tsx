@@ -7,6 +7,7 @@ import { registerHooks, unregisterHooks } from '../core/settings-manager.js';
 import { buildVarMap, renderTemplate, installTemplate } from '../core/template-engine.js';
 import { platformMatches } from '../core/platform.js';
 import type { ModuleManifest, ModuleStatusInfo, ResolvedConfig } from '../core/types.js';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -121,6 +122,7 @@ export function ModuleTree() {
     const vars = buildVarMap(config);
 
     let errors = 0;
+    const errorDetails: string[] = [];
     for (const id of result.order) {
       const manifest = manifests.get(id)!;
       try {
@@ -140,15 +142,19 @@ export function ModuleTree() {
           const resolvedHooks = manifest.hooks.map(h => ({ ...h, command: renderTemplate(h.command, vars) }));
           registerHooks(config, manifest.id, resolvedHooks);
         }
+        if (manifest.postInstall) {
+          const cmd = renderTemplate(manifest.postInstall, vars);
+          execSync(cmd, { stdio: 'pipe' });
+        }
       } catch (err: any) {
         errors++;
-        setMessage(`Error installing ${id}: ${err.message}`);
+        errorDetails.push(`${id}: ${err.message}`);
       }
     }
 
     setSelected(new Set());
     setStatuses(getAllModuleStatuses(config));
-    setMessage(errors > 0 ? `Install finished with ${errors} errors` : `Installed ${result.order.length} modules. Press q to exit.`);
+    setMessage(errors > 0 ? `Install finished with ${errors} error(s): ${errorDetails.join('; ')}` : `Installed ${result.order.length} modules. Press q to exit.`);
     setMode('done');
   }
 
@@ -160,6 +166,7 @@ export function ModuleTree() {
     const installed = getInstalledModuleIds(config);
     const result = resolveUninstall(toUninstall, manifests, installed);
 
+    const vars = buildVarMap(config);
     for (const id of result.order) {
       const manifest = manifests.get(id)!;
       for (const asset of manifest.assets) {
@@ -175,6 +182,14 @@ export function ModuleTree() {
         }
       }
       unregisterHooks(config, manifest.id);
+      if (manifest.postUninstall) {
+        try {
+          const cmd = renderTemplate(manifest.postUninstall, vars);
+          execSync(cmd, { stdio: 'pipe' });
+        } catch {
+          // Best-effort cleanup
+        }
+      }
     }
 
     setSelected(new Set());
