@@ -18,6 +18,11 @@ export const manifest: ModuleManifest = {
       matcher: '',
       command: '{{hooks_dir}}/play-sound.sh /System/Library/Sounds/Hero.aiff',
     },
+    {
+      event: 'Notification',
+      matcher: '',
+      command: '{{hooks_dir}}/play-sound.sh /System/Library/Sounds/Sosumi.aiff',
+    },
   ],
   assets: [
     {
