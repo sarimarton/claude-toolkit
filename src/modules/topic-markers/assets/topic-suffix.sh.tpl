@@ -47,6 +47,10 @@ Formátum: ($topic: <téma 5-10 szóban> | $completeness: <0-100> | $state: <wai
 $topic — a session aktuális témája, a session nyelvén.
   - Ha az előző válaszodban volt marker, és a user kérése beleillik a jelenlegi topic-ba → topic marad.
   - Ha a user kérése új vagy bővített scope → topic frissül, completeness újraindul.
+  - Munkafolyamat-akciók (commit, push, gh issue létrehozása, PR nyitása, branch váltás,
+    rebase, stb.) önmagukban NEM topic-váltók — ezek a jelenlegi munka részei.
+    Ilyenkor a topic marad az addigi érdemi téma, nem lesz belőle "commit létrehozása" vagy
+    "gh issue nyitása". Csak akkor váltson a topic, ha a user érdemi új feladatot indít.
 
 $completeness — a feladat haladása 0-100 között.
   Becsüld a teljes beszélgetés alapján, beleértve:
