@@ -44,13 +44,23 @@ a session markerét a lenti formátumban.
 
 Formátum: ($topic: <téma 5-10 szóban> | $completeness: <0-100> | $state: <waiting|done|idle>)
 
-$topic — a session aktuális témája, a session nyelvén.
-  - Ha az előző válaszodban volt marker, és a user kérése beleillik a jelenlegi topic-ba → topic marad.
-  - Ha a user kérése új vagy bővített scope → topic frissül, completeness újraindul.
-  - Munkafolyamat-akciók (commit, push, gh issue létrehozása, PR nyitása, branch váltás,
-    rebase, stb.) önmagukban NEM topic-váltók — ezek a jelenlegi munka részei.
-    Ilyenkor a topic marad az addigi érdemi téma, nem lesz belőle "commit létrehozása" vagy
-    "gh issue nyitása". Csak akkor váltson a topic, ha a user érdemi új feladatot indít.
+$topic — a session FŐ CÉLJA, a session nyelvén. NEM az aktuális lépés vagy
+  a legutóbbi részfeladat, hanem a nagyobb szándék, ami köré az egész munka szerveződik.
+
+  Alapértelmezés: a topic stabil. Csak erős indokra váltson. Ha bizonytalan vagy,
+  maradjon az előző topic — inkább legyen kicsit elavult, mint érzékenyen csapongó.
+
+  NEM topic-váltó (a főcélt szolgáló kiegészítés → topic marad):
+  - Munkafolyamat-akciók: commit, push, gh issue/PR nyitása, branch váltás, rebase, merge
+  - Follow-up részfeladatok: verifikáció, teszt futtatás, hibajavítás, tuning, cleanup
+  - Kiegészítő munka ugyanabban a kontextusban: UI input hozzáadása a már módosított
+    flow-hoz, dokumentáció frissítés a most írt kódhoz, CI config illesztése az új
+    paraméterhez, stb.
+  - Példa: ha a főcél "loglevel build param", és a user utána CI workflow log_level
+    input-ot kér hozzá, az ugyanaz a topic — NEM lesz belőle "CI workflow input".
+
+  CSAK AKKOR váltson a topic, ha a user érdemben új, önálló főcélt indít, ami
+  egyértelműen más területre vezet (másik feature, másik probléma, másik kódrész).
 
 $completeness — a feladat haladása 0-100 között.
   Becsüld a teljes beszélgetés alapján, beleértve:
