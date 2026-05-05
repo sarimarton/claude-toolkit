@@ -48,7 +48,7 @@ export interface HookRegistration {
 }
 
 /** Asset target location */
-export type AssetTarget = 'hooks' | 'scripts' | 'commands' | 'swiftbar';
+export type AssetTarget = 'hooks' | 'scripts' | 'commands' | 'swiftbar' | 'launchagents';
 
 /** Asset to install */
 export interface AssetDefinition {
@@ -126,6 +126,8 @@ export interface ResolvedConfig {
   swiftbarDir: string;
   /** SwiftBar helpers directory */
   helpersDir: string;
+  /** macOS LaunchAgents directory (~/Library/LaunchAgents) */
+  launchAgentsDir: string;
   /** Claude settings directory (~/.claude) */
   claudeDir: string;
   /** Chart cost estimation: plan monthly cost in USD */

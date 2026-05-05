@@ -75,6 +75,7 @@ export function resolveConfig(): ResolvedConfig {
     commandsDir,
     swiftbarDir,
     helpersDir,
+    launchAgentsDir: path.join(HOME, 'Library', 'LaunchAgents'),
     claudeDir: path.join(HOME, '.claude'),
     chartPlanCost: user.chart?.planMonthlyCost ?? 150,
     chartApiRate: user.chart?.apiCostPerSessionPct ?? 0.20,
@@ -89,7 +90,7 @@ export function resolveConfig(): ResolvedConfig {
 
 /** Ensure all install directories exist */
 export function ensureInstallDirs(config: ResolvedConfig): void {
-  for (const dir of [config.hooksDir, config.scriptsDir, config.commandsDir, config.swiftbarDir, config.helpersDir]) {
+  for (const dir of [config.hooksDir, config.scriptsDir, config.commandsDir, config.swiftbarDir, config.helpersDir, config.launchAgentsDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -101,6 +102,7 @@ export function getTargetDir(config: ResolvedConfig, target: string): string {
     case 'scripts': return config.scriptsDir;
     case 'commands': return config.commandsDir;
     case 'swiftbar': return config.swiftbarDir;
+    case 'launchagents': return config.launchAgentsDir;
     default: return config.installDir;
   }
 }
