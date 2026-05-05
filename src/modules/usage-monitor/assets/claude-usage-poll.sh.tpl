@@ -318,12 +318,19 @@ def parse_reset_relative(text):
     total_secs = days * 86400 + hours * 3600 + mins * 60
     return int(time.time()) + total_secs if total_secs > 0 else None
 
-def find_reset(lines, i):
+def find_reset(lines, i, max_offset_secs=None):
+    # max_offset_secs: drop implausibly far parses (e.g. session reset rolled +1 day
+    # by parse_reset_ts when the time-only string already passed >10 min ago).
+    now_ts = int(time.time())
     for k in range(i + 1, min(i + 7, len(lines))):
         ts = parse_reset_ts(lines[k])
-        if ts: return ts
-        ts = parse_reset_relative(lines[k])
-        if ts: return ts
+        if ts is None:
+            ts = parse_reset_relative(lines[k])
+        if ts is None:
+            continue
+        if max_offset_secs is not None and ts - now_ts > max_offset_secs:
+            continue
+        return ts
     return None
 
 session_pct = None; session_reset_ts = None
@@ -340,7 +347,8 @@ for i, line in enumerate(lines):
             label = lbl; break
     label_lower = label.lower()
     if "session" in label_lower and session_pct is None:
-        session_pct = pct_val; session_reset_ts = find_reset(lines, i)
+        # Session windows are 5h — cap to 5h 30min to filter day-rollover bugs
+        session_pct = pct_val; session_reset_ts = find_reset(lines, i, max_offset_secs=5*3600+1800)
     elif "week" in label_lower and weekly_pct is None:
         weekly_pct = pct_val; weekly_reset_ts = find_reset(lines, i)
 
@@ -378,8 +386,15 @@ if "pct" not in result:
     else:
         result["error"] = "parse_failed"
         result["diag"] = [l.rstrip() for l in lines if l.strip()][-15:]
+    now_ts_fallback = int(time.time())
     for key in ("pct", "reset_ts", "weekly_pct", "weekly_reset_ts"):
-        if key not in result and key in prev: result[key] = prev[key]
+        if key in result or key not in prev: continue
+        val = prev[key]
+        # Skip stale or implausibly far session reset_ts (e.g. day-rollover bug)
+        if key == "reset_ts":
+            if not isinstance(val, (int, float)) or val < now_ts_fallback or val - now_ts_fallback > 5*3600 + 1800:
+                continue
+        result[key] = val
 
 print(json.dumps(result))
 
