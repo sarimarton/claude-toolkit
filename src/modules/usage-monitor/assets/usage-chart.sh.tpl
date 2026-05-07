@@ -46,12 +46,17 @@ def session_color(max_pct, alpha):
 
 def process_account(log_path):
     data = []
+    skipped = 0
     with open(log_path) as f:
         for line in f:
             line = line.strip()
             if not line: continue
             try: data.append(json.loads(line))
-            except: continue
+            except Exception:
+                skipped += 1
+                continue
+    if skipped:
+        sys.stderr.write("[usage-chart] %s: %d malformed JSONL line(s) skipped\n" % (log_path, skipped))
     if not data: return None
 
     # Session series
@@ -153,6 +158,7 @@ def process_account(log_path):
         "dateFrom": days_set[0] if days_set else "", "dateTo": days_set[-1] if days_set else "",
         "heavySessions": heavy_sessions, "avgPeak": avg_peak,
         "currentWeekly": current_weekly,
+        "skippedLines": skipped,
     }
 
 all_accounts = {}
@@ -417,7 +423,8 @@ function rebuildCharts(name) {
     a.numMeasurements.toLocaleString() + ' measurements &middot; ' +
     a.numWindows + ' session windows &middot; ' +
     a.dateFrom + ' &rarr; ' + a.dateTo +
-    (_D.multi ? ' &middot; <strong>' + name + '</strong>' : '');
+    (_D.multi ? ' &middot; <strong>' + name + '</strong>' : '') +
+    (a.skippedLines ? ' &middot; <span style="color:#e64646">&#9888; ' + a.skippedLines + ' malformed JSONL line' + (a.skippedLines === 1 ? '' : 's') + ' skipped</span>' : '');
 
   buildStats(a);
   buildCostTable(a.costRows);
