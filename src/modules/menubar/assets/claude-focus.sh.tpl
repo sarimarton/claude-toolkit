@@ -39,6 +39,13 @@ fi
 # Save original window name
 ORIG=$(TMUX= $TMUX_BIN display-message -t "$SESSION" -p '#{window_name}' 2>/dev/null | tr -d '\n')
 
+restore_window_name() {
+    # Idempotent: safe to call multiple times. Best-effort — if the session
+    # disappeared, just silently move on.
+    [ -n "$ORIG" ] && TMUX= $TMUX_BIN rename-window -t "$SESSION" "$ORIG" 2>/dev/null || true
+}
+trap restore_window_name EXIT
+
 # Set marker as window name (propagates to tab title via set-titles-string "#W")
 TMUX= $TMUX_BIN rename-window -t "$SESSION" "$MARKER" 2>/dev/null
 sleep 0.15
@@ -92,8 +99,7 @@ osascript -l JavaScript -e "
 osa_rc=$?
 if [ $osa_rc -ne 0 ]; then
     notify_failure "Claude focus failed" "AppleScript scan failed (Accessibility permission?)"
-    # don't early-exit — still attempt to restore the original window name below
+    # trap on EXIT will still restore the original window name
 fi
 
-# Restore original window name
-TMUX= $TMUX_BIN rename-window -t "$SESSION" "$ORIG" 2>/dev/null
+# Window name restore handled by EXIT trap (runs on success, failure, or signal)
