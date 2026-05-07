@@ -433,6 +433,7 @@ if "pct" not in result:
     full = "\n".join(lines)
     if "rate_limit_error" in full:
         result["pct"] = 100; result["weekly_pct"] = 100; result["rate_limited"] = True
+        result["last_success_ts"] = result["ts"]  # rate-limit is a valid parse
         log_file = os.environ.get("USAGE_LOG", "")
         if log_file and os.path.exists(log_file):
             now = int(time.time())
