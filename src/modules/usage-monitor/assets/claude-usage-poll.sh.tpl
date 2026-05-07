@@ -10,6 +10,34 @@
 set -uo pipefail
 unset TMUX
 
+# Self-lock: prevent concurrent poll-script invocations from racing on the same
+# claude_usage_mon tmux session. The swiftbar plugin already gates auto-polls
+# with the same lock file, but Refresh now and any other manual trigger bypass
+# that gate, so we acquire it here as well.
+LOCK_FILE="/tmp/claude-usage-poll.lock"
+acquire_lock() {
+  if ( set -o noclobber; echo "$$" > "$LOCK_FILE" ) 2>/dev/null; then
+    return 0
+  fi
+  local held; held=$(cat "$LOCK_FILE" 2>/dev/null)
+  # If the swiftbar wrapper wrote its own PID, treat it as ours and overwrite
+  if [ "$held" = "$PPID" ]; then
+    echo "$$" > "$LOCK_FILE"
+    return 0
+  fi
+  if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then
+    return 1
+  fi
+  # Stale lock — remove and retry once
+  rm -f "$LOCK_FILE"
+  ( set -o noclobber; echo "$$" > "$LOCK_FILE" ) 2>/dev/null
+  [ "$(cat "$LOCK_FILE" 2>/dev/null)" = "$$" ]
+}
+if ! acquire_lock; then
+  exit 0
+fi
+trap 'rm -f "$LOCK_FILE"' EXIT
+
 TMUX_BIN={{tmux}}
 CLAUDE={{claude}}
 CONFIG_FILE="{{config_file}}"
