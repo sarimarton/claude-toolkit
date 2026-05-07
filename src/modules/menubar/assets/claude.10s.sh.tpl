@@ -72,7 +72,9 @@ fi
 if (( age > POLL_INTERVAL )); then
     # Only start poll if not already running
     if [[ ! -f "$POLL_LOCK" ]] || ! kill -0 "$(cat "$POLL_LOCK" 2>/dev/null)" 2>/dev/null; then
-        ( echo $$ > "$POLL_LOCK"; bash "$POLL_SCRIPT"; rm -f "$POLL_LOCK" ) &>/dev/null &
+        ( bash "$POLL_SCRIPT"; rm -f "$POLL_LOCK" ) &>/dev/null &
+        # Write actual background PID (not $$) for correct lock detection
+        echo $! > "$POLL_LOCK"
     fi
 fi
 
