@@ -230,14 +230,21 @@ if [[ -n "$pct" ]]; then
 elif [[ "$error" == "usage_unavailable" ]]; then
     echo "${A_LOGO}✻ ${A_YELLOW}⚠${A_RST} | ansi=true size=12"
 elif [[ -n "$phase" && -z "$error" ]]; then
-    label="$phase"
-    case "$phase" in
-        session) label="Checking session" ;; claude) label="Checking Claude" ;;
-        start)   label="Starting Claude"  ;; restart) label="Restarting" ;;
-        send)    label="Sending /usage"   ;; wait) label="Waiting" ;;
-        parse)   label="Parsing" ;;
-    esac
-    echo "${A_LOGO}✻ ${A_DIM}${label}…${A_RST} | ansi=true size=12"
+    # Refreshing… spinner — but check that the phase isn't stuck
+    age_phase=$(( now_check - ${ts:-0} ))
+    if [[ -n "$ts" ]] && (( age_phase > STALE_THRESHOLD )); then
+        # Phase has not progressed for >5min — poll is likely stuck or crashed
+        echo "${A_LOGO}✻ ${A_DIM}stuck ${A_YELLOW}⚠${A_RST} | ansi=true size=12"
+    else
+        label="$phase"
+        case "$phase" in
+            session) label="Checking session" ;; claude) label="Checking Claude" ;;
+            start)   label="Starting Claude"  ;; restart) label="Restarting" ;;
+            send)    label="Sending /usage"   ;; wait) label="Waiting" ;;
+            parse)   label="Parsing" ;;
+        esac
+        echo "${A_LOGO}✻ ${A_DIM}${label}…${A_RST} | ansi=true size=12"
+    fi
 else
     echo "${A_LOGO}✻ ${A_DIM}--${A_RST} | ansi=true size=12"
 fi
