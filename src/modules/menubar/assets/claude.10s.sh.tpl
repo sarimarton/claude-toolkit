@@ -97,15 +97,19 @@ STALE_THRESHOLD=300
 is_stale=false
 stale_age_min=""
 now_check=$(date +%s)
-# Prefer last_success_ts (set by the python parser only on a real parse).
-# Fall back to ts (older JSONs) so this still works during the rollout.
-success_ref="${last_success_ts:-$ts}"
-if [[ -n "$success_ref" ]]; then
-    age_s=$(( now_check - success_ref ))
+# Only trust last_success_ts (set by the python parser on a real parse).
+# Never fall back to ts — ts is bumped on every poll, including failure paths
+# where pct is preserved from prev without a real parse, which would mask staleness.
+if [[ -n "$last_success_ts" ]]; then
+    age_s=$(( now_check - last_success_ts ))
     if (( age_s > STALE_THRESHOLD )); then
         is_stale=true
         stale_age_min=$(( age_s / 60 ))
     fi
+elif [[ -n "$pct" ]]; then
+    # We have a pct but no last_success_ts — either pre-rollout JSON, or the
+    # parser preserved prev.pct without a real parse. Either way, do not trust it.
+    is_stale=true
 fi
 # If the session reset already passed, the stored pct belongs to a previous window.
 if [[ -n "$reset_ts" ]] && (( reset_ts < now_check )); then
