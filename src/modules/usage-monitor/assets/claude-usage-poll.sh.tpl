@@ -342,6 +342,7 @@ except ImportError:
 lines = sys.stdin.read().split("\n")
 phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
 result = {"ts": int(time.time()), "phases": phases}
+parse_warnings = []
 
 prev = {}
 try:
@@ -361,8 +362,10 @@ def parse_reset_ts(text):
         month = months.get(month_str, 1)
         tz = None
         if tz_name:
-            try: tz = ZoneInfo(tz_name)
-            except: pass
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                parse_warnings.append(f"tz_unknown:{tz_name}")
         now = datetime.now(tz) if tz else datetime.now()
         year = now.year
         if tz: reset = datetime(year, month, day, hour, minute, 0, tzinfo=tz)
@@ -381,8 +384,10 @@ def parse_reset_ts(text):
     elif ampm == "am" and hour == 12: hour = 0
     tz = None
     if tz_name:
-        try: tz = ZoneInfo(tz_name)
-        except: pass
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            parse_warnings.append(f"tz_unknown:{tz_name}")
     now = datetime.now(tz) if tz else datetime.now()
     reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if reset <= now:
@@ -501,6 +506,11 @@ if "pct" not in result:
 # A successful poll has no error key, so error_since_ts is naturally absent.
 if result.get("error"):
     result["error_since_ts"] = prev.get("error_since_ts") or prev.get("ts") or int(time.time())
+
+if parse_warnings:
+    # Deduplicate while preserving order
+    seen = set()
+    result["warnings"] = [w for w in parse_warnings if not (w in seen or seen.add(w))]
 
 print(json.dumps(result))
 
