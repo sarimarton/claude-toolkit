@@ -397,12 +397,15 @@ def find_reset(lines, i, max_offset_secs=None):
 session_pct = None; session_reset_ts = None
 weekly_pct  = None; weekly_reset_ts  = None
 
-# Only parse "% used" lines that appear after the /usage panel header
-# ("Status   Config   Usage   Stats"). Without this guard the regex can latch
-# onto stale renders left in the tmux scrollback and silently report wrong values.
+# Loose panel header detection: at least 3 of the 4 expected tab labels.
+# This tolerates UI changes (localization, tab rename, ordering tweaks) while
+# remaining strict enough that random scrollback will not false-match. The
+# downstream label check ("session" / "week" in the line above "% used")
+# is the second line of defense.
+panel_tokens = ("Status", "Config", "Usage", "Stats")
 panel_start = -1
 for idx, ln in enumerate(lines):
-    if "Status" in ln and "Config" in ln and "Usage" in ln and "Stats" in ln:
+    if sum(t in ln for t in panel_tokens) >= 3:
         panel_start = idx
         break
 
