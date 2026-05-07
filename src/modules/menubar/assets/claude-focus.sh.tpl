@@ -3,8 +3,18 @@
 # Uses tmux window rename + JXA AX tree scanning (same marker technique as HS version).
 # Usage: claude-focus.sh <session_name>
 
+notify_failure() {
+    local title="$1"
+    local detail="$2"
+    logger -t claude-toolkit "FAIL: $title — $detail" 2>/dev/null || true
+    osascript -e "display notification \"$detail\" with title \"$title\"" >/dev/null 2>&1 || true
+}
+
 SESSION="$1"
-[[ -z "$SESSION" ]] && exit 1
+if [[ -z "$SESSION" ]]; then
+    notify_failure "Claude focus failed" "No session name provided"
+    exit 1
+fi
 
 TMUX_BIN={{tmux}}
 MARKER="FOCUS:$SESSION"
@@ -18,6 +28,12 @@ if [[ "$SESSION" == vscode_* ]]; then
     sleep 0.2
     open "vscode://sarim.vscode-terminal-topic/focus?pid=$pid"
     exit 0
+fi
+
+# Verify session exists before any window-rename gymnastics
+if ! TMUX= $TMUX_BIN has-session -t "$SESSION" 2>/dev/null; then
+    notify_failure "Claude focus failed" "Session does not exist: $SESSION"
+    exit 1
 fi
 
 # Save original window name
@@ -73,6 +89,11 @@ osascript -l JavaScript -e "
         } catch(e) {}
     }
 " 2>/dev/null
+osa_rc=$?
+if [ $osa_rc -ne 0 ]; then
+    notify_failure "Claude focus failed" "AppleScript scan failed (Accessibility permission?)"
+    # don't early-exit — still attempt to restore the original window name below
+fi
 
 # Restore original window name
 TMUX= $TMUX_BIN rename-window -t "$SESSION" "$ORIG" 2>/dev/null

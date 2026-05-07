@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 # Kill a tmux Claude session, then reopen the SwiftBar menu
-{{tmux}} kill-session -t "$1" 2>/dev/null
+
+notify_failure() {
+    local title="$1"
+    local detail="$2"
+    logger -t claude-toolkit "FAIL: $title — $detail" 2>/dev/null || true
+    osascript -e "display notification \"$detail\" with title \"$title\"" >/dev/null 2>&1 || true
+}
+
+if [ -z "$1" ]; then
+    notify_failure "Claude kill failed" "No session name provided"
+    exit 1
+fi
+
+if ! {{tmux}} kill-session -t "$1" 2>/dev/null; then
+    notify_failure "Claude kill failed" "Could not kill session: $1"
+    exit 1
+fi
+
 # Refresh plugin data, then reopen menu via CGEvent mouse click
 open -g "swiftbar://refreshplugin?name=claude.10s"
 sleep 0.5
