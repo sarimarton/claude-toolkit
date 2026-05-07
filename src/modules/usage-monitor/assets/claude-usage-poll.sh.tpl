@@ -14,6 +14,7 @@ TMUX_BIN={{tmux}}
 CLAUDE={{claude}}
 CONFIG_FILE="{{config_file}}"
 USAGE_DIR="{{home}}/.local/share/claude-usage"
+STALE_RESTART_THRESHOLD=600  # seconds; if error has persisted longer, kill stuck tmux session
 
 # ── Account discovery ───────────────────────────────────
 # Returns lines of "name<TAB>token" pairs.
@@ -83,14 +84,15 @@ except: print(); print(); print(); print()
     if [ -n "$diag" ]; then
       diag_json=$(printf '%s' "$diag" | python3 -c 'import sys,json; print(json.dumps([l.rstrip() for l in sys.stdin.read().split("\n") if l.strip()]))')
     fi
-    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset=""
+    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_err_since="" prev_ts=""
     if [ -f "$USAGE_FILE" ]; then
-      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; } < <(python3 -c "
+      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_err_since; read -r prev_ts; } < <(python3 -c "
 import json
 try:
     d=json.load(open('$USAGE_FILE'))
     print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts',''))
-except: print(); print(); print(); print()
+    print(d.get('error_since_ts') or ''); print(d.get('ts') or '')
+except: print(); print(); print(); print(); print(); print()
 " 2>/dev/null) || true
     fi
     local extra=""
@@ -98,6 +100,9 @@ except: print(); print(); print(); print()
     [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
     [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
     [ -n "$prev_weekly_reset" ] && extra+="\"weekly_reset_ts\":$prev_weekly_reset,"
+    local err_since="$prev_err_since"
+    [ -z "$err_since" ] && err_since="${prev_ts:-$(date +%s)}"
+    extra+="\"error_since_ts\":$err_since,"
     local acct_json=""
     [ -n "$ACCT_NAME" ] && acct_json="\"account\":\"$ACCT_NAME\","
     printf '{%s%s"error":"%s","phases":[%s],"diag":%s,"ts":%d}\n' "$extra" "$acct_json" "$error" "$pj" "$diag_json" "$(date +%s)" > "$USAGE_FILE"
@@ -146,6 +151,24 @@ except: print(); print(); print(); print()
     claude_cmd="CLAUDE_CODE_OAUTH_TOKEN='$ACCT_TOKEN' CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions"
   else
     claude_cmd="unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions"
+  fi
+
+  # Watchdog: if the previous JSON shows error_since_ts older than the
+  # threshold, the tmux session is likely stuck (e.g. cached /usage dialog
+  # whose reset_ts can no longer be parsed). Kill it so the phases below
+  # create a fresh one.
+  if [ -f "$USAGE_FILE" ]; then
+    local err_since
+    err_since=$(python3 -c "
+import json
+try:
+    d = json.load(open('$USAGE_FILE'))
+    print(d.get('error_since_ts') or '')
+except: print('')
+" 2>/dev/null)
+    if [ -n "$err_since" ] && [ $(( $(date +%s) - err_since )) -gt $STALE_RESTART_THRESHOLD ]; then
+      $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
+    fi
   fi
 
   # --- Phase: session ---
@@ -395,6 +418,11 @@ if "pct" not in result:
             if not isinstance(val, (int, float)) or val < now_ts_fallback or val - now_ts_fallback > 5*3600 + 1800:
                 continue
         result[key] = val
+
+# Track error persistence so the bash watchdog can restart a stuck session.
+# A successful poll has no error key, so error_since_ts is naturally absent.
+if result.get("error"):
+    result["error_since_ts"] = prev.get("error_since_ts") or prev.get("ts") or int(time.time())
 
 print(json.dumps(result))
 
