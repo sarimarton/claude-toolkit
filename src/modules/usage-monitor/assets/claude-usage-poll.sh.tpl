@@ -426,9 +426,11 @@ for i, line in enumerate(lines):
     elif "week" in label_lower and weekly_pct is None:
         weekly_pct = pct_val; weekly_reset_ts = find_reset(lines, i)
 
-if session_pct is not None and session_reset_ts is not None:
-    result["pct"] = session_pct; result["reset_ts"] = session_reset_ts
+if session_pct is not None:
+    result["pct"] = session_pct
     result["last_success_ts"] = result["ts"]
+    if session_reset_ts is not None:
+        result["reset_ts"] = session_reset_ts
 if weekly_pct is not None: result["weekly_pct"] = weekly_pct
 if weekly_reset_ts is not None: result["weekly_reset_ts"] = weekly_reset_ts
 
