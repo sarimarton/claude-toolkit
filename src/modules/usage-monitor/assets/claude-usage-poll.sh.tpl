@@ -140,10 +140,36 @@ except: print(); print(); print(); print(); print(); print(); print()
   }
 
   claude_is_running() {
-    local last_line
-    last_line=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | awk 'NF{line=$0} END{print line}')
-    [ -z "$last_line" ] && return 1
-    [[ ! "$last_line" =~ \$[[:space:]]*$ ]]
+    # Positive detection: Claude Code is running iff
+    #   (a) the pane's foreground command is NOT a plain shell, AND
+    #   (b) at least one Claude UI marker is visible in the pane content.
+    # Earlier heuristic was negative ("last line not ending in $ ") which produced
+    # false positives for any non-bash prompt (zsh %, custom PS1, error messages,
+    # …) — that caused /usage to be sent into a dead/empty shell, looping the
+    # poll into usage_unavailable without ever rebuilding the Claude session.
+    local cmd content
+    cmd=$($TMUX_BIN list-panes -t "$SESSION" -F '#{pane_current_command}' 2>/dev/null | head -1)
+    # Negative process-name filter: if the foreground command is a plain shell,
+    # Claude is definitely not running. We do NOT positive-match on "claude" or
+    # "node" because the actual foreground command varies — Claude spawns MCP
+    # children (npm exec, …) and tmux reports the most-recent foreground child,
+    # which is often an MCP package name (e.g. "2.1.132"). So we only reject the
+    # known-bad cases (shell process names) here, then let the content check do
+    # the heavy lifting.
+    case "$cmd" in
+      ""|zsh|-zsh|bash|-bash|sh|-sh|fish|-fish) return 1 ;;
+    esac
+    # Content check: at least one Claude UI marker must be visible.
+    # ❯ — Claude prompt char (U+276F); ⏵⏵ — bypass-mode indicator (U+23F5);
+    # "bypass permissions" — status-bar text when launched with --dangerously-skip-permissions.
+    # We require both ASCII and unicode markers in the alternation so it still
+    # matches even if the ❯ character is mis-encoded by tmux capture-pane.
+    content=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null)
+    [ -z "$content" ] && return 1
+    if printf '%s' "$content" | grep -qE '^❯|bypass permissions|⏵⏵'; then
+      return 0
+    fi
+    return 1
   }
 
   send_usage_and_wait() {
