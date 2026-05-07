@@ -54,8 +54,8 @@ fi
 
 # ── JSON helpers (pure bash — no python3 overhead) ───────
 
-json_str()  { grep -oE "\"$1\":[[:space:]]*\"[^\"]*\"" "$USAGE_FILE" 2>/dev/null | head -1 | sed "s/\"$1\":[[:space:]]*\"//;s/\"$//" ; }
-json_num()  { grep -oE "\"$1\":[[:space:]]*[0-9]+" "$USAGE_FILE" 2>/dev/null | head -1 | grep -o '[0-9]*$' ; }
+json_str()  { grep -oE "[,{[:space:]]\"$1\":[[:space:]]*\"[^\"]*\"" "$USAGE_FILE" 2>/dev/null | head -1 | sed "s/.*\"$1\":[[:space:]]*\"//;s/\"$//" ; }
+json_num()  { grep -oE "[,{[:space:]]\"$1\":[[:space:]]*[0-9]+" "$USAGE_FILE" 2>/dev/null | head -1 | grep -o '[0-9]*$' ; }
 
 # ── Auto-poll: trigger refresh if data is stale (>3 min) ──
 POLL_INTERVAL=180  # 3 minutes
