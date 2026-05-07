@@ -86,6 +86,29 @@ error=$(json_str error)
 error_detail=$(json_str error_detail)
 phase=$(json_str phase)
 ts=$(json_num ts)
+last_success_ts=$(json_num last_success_ts)
+
+# Stale detection: a poll cycle is 180s, so anything older than ~5 min means the
+# poll has been silently failing or returning stale fallbacks. Without this guard
+# the menu can show a green "92%" while the real session usage is 33%.
+STALE_THRESHOLD=300
+is_stale=false
+stale_age_min=""
+now_check=$(date +%s)
+# Prefer last_success_ts (set by the python parser only on a real parse).
+# Fall back to ts (older JSONs) so this still works during the rollout.
+success_ref="${last_success_ts:-$ts}"
+if [[ -n "$success_ref" ]]; then
+    age_s=$(( now_check - success_ref ))
+    if (( age_s > STALE_THRESHOLD )); then
+        is_stale=true
+        stale_age_min=$(( age_s / 60 ))
+    fi
+fi
+# If the session reset already passed, the stored pct belongs to a previous window.
+if [[ -n "$reset_ts" ]] && (( reset_ts < now_check )); then
+    is_stale=true
+fi
 
 # Determine if weekly limit is the binding constraint
 weekly_capped=false
@@ -187,12 +210,13 @@ if [[ -n "$pct" ]]; then
     else
         display_pct=$pct
     fi
-    if [[ "$error" == "usage_unavailable" ]]; then
+    if [[ "$error" == "usage_unavailable" ]] || $is_stale; then
         pct_a="$A_DIM"  # stale data → gray
     else
         pct_a=$(pct_ansi $display_pct)
     fi
     title="${A_LOGO}✻ ${pct_a}${display_pct}%"
+    $is_stale && title="$title${A_YELLOW}⚠"
     $weekly_capped && title="$title${A_YELLOW}W"
     [[ -n "$mins_left" ]] && title="$title ${A_DIM}($(format_time $mins_left))"
     $MULTI_ACCOUNT && title="$title ${A_DIM}$PRIMARY_ACCOUNT"
@@ -232,6 +256,14 @@ if [[ -n "$pct" ]]; then
         stale_reason="stale"
         [[ -n "$error_detail" ]] && stale_reason="stale: $error_detail"
         status_line="$status_line · ⚠ $stale_reason"
+    elif $is_stale; then
+        if [[ -n "$reset_ts" ]] && (( reset_ts < now_check )); then
+            status_line="$status_line · ⚠ stale: window expired"
+        elif [[ -n "$stale_age_min" ]]; then
+            status_line="$status_line · ⚠ stale: no fresh parse in ${stale_age_min}m"
+        else
+            status_line="$status_line · ⚠ stale"
+        fi
     elif [[ -n "$phase" ]]; then
         status_line="$status_line · refreshing…"
     fi

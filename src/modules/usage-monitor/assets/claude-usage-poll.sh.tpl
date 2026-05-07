@@ -52,14 +52,14 @@ poll_account() {
       [ -n "$pj" ] && pj+=","
       pj+="\"$p\""
     done
-    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset=""
+    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_last_success=""
     if [ -f "$USAGE_FILE" ]; then
-      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; } < <(python3 -c "
+      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_last_success; } < <(python3 -c "
 import json
 try:
     d=json.load(open('$USAGE_FILE'))
-    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts',''))
-except: print(); print(); print(); print()
+    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts','')); print(d.get('last_success_ts',''))
+except: print(); print(); print(); print(); print()
 " 2>/dev/null) || true
     fi
     local extra=""
@@ -67,6 +67,7 @@ except: print(); print(); print(); print()
     [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
     [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
     [ -n "$prev_weekly_reset" ] && extra+="\"weekly_reset_ts\":$prev_weekly_reset,"
+    [ -n "$prev_last_success" ] && extra+="\"last_success_ts\":$prev_last_success,"
     local acct_json=""
     [ -n "$ACCT_NAME" ] && acct_json="\"account\":\"$ACCT_NAME\","
     printf '{%s%s"phase":"%s","phases":[%s],"ts":%d}\n' "$extra" "$acct_json" "$1" "$pj" "$(date +%s)" > "$USAGE_FILE"
@@ -84,15 +85,15 @@ except: print(); print(); print(); print()
     if [ -n "$diag" ]; then
       diag_json=$(printf '%s' "$diag" | python3 -c 'import sys,json; print(json.dumps([l.rstrip() for l in sys.stdin.read().split("\n") if l.strip()]))')
     fi
-    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_err_since="" prev_ts=""
+    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_err_since="" prev_ts="" prev_last_success=""
     if [ -f "$USAGE_FILE" ]; then
-      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_err_since; read -r prev_ts; } < <(python3 -c "
+      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_err_since; read -r prev_ts; read -r prev_last_success; } < <(python3 -c "
 import json
 try:
     d=json.load(open('$USAGE_FILE'))
     print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts',''))
-    print(d.get('error_since_ts') or ''); print(d.get('ts') or '')
-except: print(); print(); print(); print(); print(); print()
+    print(d.get('error_since_ts') or ''); print(d.get('ts') or ''); print(d.get('last_success_ts',''))
+except: print(); print(); print(); print(); print(); print(); print()
 " 2>/dev/null) || true
     fi
     local extra=""
@@ -100,6 +101,7 @@ except: print(); print(); print(); print(); print(); print()
     [ -n "$prev_reset" ] && extra+="\"reset_ts\":$prev_reset,"
     [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
     [ -n "$prev_weekly_reset" ] && extra+="\"weekly_reset_ts\":$prev_weekly_reset,"
+    [ -n "$prev_last_success" ] && extra+="\"last_success_ts\":$prev_last_success,"
     local err_since="$prev_err_since"
     [ -z "$err_since" ] && err_since="${prev_ts:-$(date +%s)}"
     extra+="\"error_since_ts\":$err_since,"
@@ -117,6 +119,8 @@ except: print(); print(); print(); print(); print(); print()
   }
 
   send_usage_and_wait() {
+    # Clear scrollback so the parser cannot match stale "% used" lines from a prior panel render
+    $TMUX_BIN clear-history -t "$SESSION" 2>/dev/null
     $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
     sleep 0.5
     if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -q "How is Claude doing"; then
@@ -153,20 +157,26 @@ except: print(); print(); print(); print(); print(); print()
     claude_cmd="unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions"
   fi
 
-  # Watchdog: if the previous JSON shows error_since_ts older than the
-  # threshold, the tmux session is likely stuck (e.g. cached /usage dialog
-  # whose reset_ts can no longer be parsed). Kill it so the phases below
-  # create a fresh one.
+  # Watchdog: kill the tmux session if it has been failing or silently producing
+  # stale data for too long. Two triggers:
+  #   1. error_since_ts older than threshold (explicit failures: dismissed, parse_failed, …)
+  #   2. last_success_ts older than threshold (no real parse — covers the silent-fallback case
+  #      where the parser returned a stale pct without an error mező)
   if [ -f "$USAGE_FILE" ]; then
-    local err_since
-    err_since=$(python3 -c "
+    local err_since last_success
+    { read -r err_since; read -r last_success; } < <(python3 -c "
 import json
 try:
     d = json.load(open('$USAGE_FILE'))
     print(d.get('error_since_ts') or '')
-except: print('')
-" 2>/dev/null)
-    if [ -n "$err_since" ] && [ $(( $(date +%s) - err_since )) -gt $STALE_RESTART_THRESHOLD ]; then
+    print(d.get('last_success_ts') or '')
+except:
+    print(''); print('')
+" 2>/dev/null) || true
+    local now_ts; now_ts=$(date +%s)
+    if [ -n "$err_since" ] && [ $(( now_ts - err_since )) -gt $STALE_RESTART_THRESHOLD ]; then
+      $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
+    elif [ -n "$last_success" ] && [ $(( now_ts - last_success )) -gt $STALE_RESTART_THRESHOLD ]; then
       $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
     fi
   fi
@@ -359,7 +369,17 @@ def find_reset(lines, i, max_offset_secs=None):
 session_pct = None; session_reset_ts = None
 weekly_pct  = None; weekly_reset_ts  = None
 
+# Only parse "% used" lines that appear after the /usage panel header
+# ("Status   Config   Usage   Stats"). Without this guard the regex can latch
+# onto stale renders left in the tmux scrollback and silently report wrong values.
+panel_start = -1
+for idx, ln in enumerate(lines):
+    if "Status" in ln and "Config" in ln and "Usage" in ln and "Stats" in ln:
+        panel_start = idx
+        break
+
 for i, line in enumerate(lines):
+    if panel_start < 0 or i < panel_start: continue
     match = re.search(r"(\d+)% used", line)
     if not match: continue
     pct_val = int(match.group(1))
@@ -377,6 +397,7 @@ for i, line in enumerate(lines):
 
 if session_pct is not None and session_reset_ts is not None:
     result["pct"] = session_pct; result["reset_ts"] = session_reset_ts
+    result["last_success_ts"] = result["ts"]
 if weekly_pct is not None: result["weekly_pct"] = weekly_pct
 if weekly_reset_ts is not None: result["weekly_reset_ts"] = weekly_reset_ts
 
@@ -410,6 +431,9 @@ if "pct" not in result:
         result["error"] = "parse_failed"
         result["diag"] = [l.rstrip() for l in lines if l.strip()][-15:]
     now_ts_fallback = int(time.time())
+    # Preserve last_success_ts so the watchdog can detect "no real parse for N seconds"
+    if "last_success_ts" in prev:
+        result["last_success_ts"] = prev["last_success_ts"]
     for key in ("pct", "reset_ts", "weekly_pct", "weekly_reset_ts"):
         if key in result or key not in prev: continue
         val = prev[key]
