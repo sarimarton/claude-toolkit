@@ -45,13 +45,7 @@ USAGE_DIR="{{home}}/.local/share/claude-usage"
 STALE_RESTART_THRESHOLD=600  # seconds; if error has persisted longer, kill stuck tmux session
 
 # ── Account discovery ───────────────────────────────────
-# Returns lines of "name<TAB>token" pairs.
-# If no accounts configured, returns empty (triggers legacy single-account mode).
 YQ={{yq}}
-
-discover_accounts() {
-  $YQ -r '.accounts[] | .name + "\t" + .token' "$CONFIG_FILE" 2>/dev/null
-}
 
 # ── Per-account poll function ───────────────────────────
 poll_account() {
@@ -545,7 +539,28 @@ if "pct" in result and "reset_ts" in result:
 
 # ── Main dispatch ───────────────────────────────────────
 
-accounts=$(discover_accounts)
+# Distinguish three cases:
+#  1. No config file → legacy single-account mode
+#  2. Config OK, no .accounts → legacy single-account mode
+#  3. Config exists but is malformed → surface the error, do NOT silently fall back
+accounts=""
+config_error=""
+if [ -f "$CONFIG_FILE" ]; then
+  if ! $YQ -e '.' "$CONFIG_FILE" >/dev/null 2>&1; then
+    config_error="config_parse_failed"
+  else
+    accounts=$($YQ -r '.accounts[]? | .name + "\t" + .token' "$CONFIG_FILE" 2>/dev/null)
+  fi
+fi
+
+if [ -n "$config_error" ]; then
+  # Surface the malformed-config error in the default USAGE_FILE so the
+  # swiftbar plugin shows ⚠ instead of silently displaying stale data.
+  now_ts=$(date +%s)
+  printf '{"ts":%d,"error":"%s","error_detail":"yq could not parse %s","error_since_ts":%d}\n' \
+    "$now_ts" "$config_error" "$CONFIG_FILE" "$now_ts" > /tmp/claude-usage.json
+  exit 1
+fi
 
 if [ -z "$accounts" ]; then
   # No accounts configured — legacy single-account mode
