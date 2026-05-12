@@ -11,6 +11,8 @@
     </array>
     <key>RunAtLoad</key>
     <true/>
+    <key>StartInterval</key>
+    <integer>600</integer>
     <key>StandardOutPath</key>
     <string>/tmp/claude-toolkit-menubar-visibility.log</string>
     <key>StandardErrorPath</key>
