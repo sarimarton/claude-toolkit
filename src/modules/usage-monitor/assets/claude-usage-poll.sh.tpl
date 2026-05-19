@@ -74,14 +74,14 @@ poll_account() {
       [ -n "$pj" ] && pj+=","
       pj+="\"$p\""
     done
-    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_last_success=""
+    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_last_success="" prev_lost_since=""
     if [ -f "$USAGE_FILE" ]; then
-      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_last_success; } < <(python3 -c "
+      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_last_success; read -r prev_lost_since; } < <(python3 -c "
 import json
 try:
     d=json.load(open('$USAGE_FILE'))
-    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts','')); print(d.get('last_success_ts',''))
-except: print(); print(); print(); print(); print()
+    print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts','')); print(d.get('last_success_ts','')); print(d.get('reset_ts_lost_since',''))
+except: print(); print(); print(); print(); print(); print()
 " 2>/dev/null) || true
     fi
     local extra=""
@@ -90,6 +90,7 @@ except: print(); print(); print(); print(); print()
     [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
     [ -n "$prev_weekly_reset" ] && extra+="\"weekly_reset_ts\":$prev_weekly_reset,"
     [ -n "$prev_last_success" ] && extra+="\"last_success_ts\":$prev_last_success,"
+    [ -n "$prev_lost_since" ] && extra+="\"reset_ts_lost_since\":$prev_lost_since,"
     local acct_json=""
     [ -n "$ACCT_NAME" ] && acct_json="\"account\":\"$ACCT_NAME\","
     printf '{%s%s"phase":"%s","phases":[%s],"ts":%d}\n' "$extra" "$acct_json" "$1" "$pj" "$(date +%s)" > "$USAGE_FILE"
@@ -107,15 +108,15 @@ except: print(); print(); print(); print(); print()
     if [ -n "$diag" ]; then
       diag_json=$(printf '%s' "$diag" | python3 -c 'import sys,json; print(json.dumps([l.rstrip() for l in sys.stdin.read().split("\n") if l.strip()]))')
     fi
-    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_err_since="" prev_ts="" prev_last_success=""
+    local prev_pct="" prev_reset="" prev_weekly="" prev_weekly_reset="" prev_err_since="" prev_ts="" prev_last_success="" prev_lost_since=""
     if [ -f "$USAGE_FILE" ]; then
-      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_err_since; read -r prev_ts; read -r prev_last_success; } < <(python3 -c "
+      { read -r prev_pct; read -r prev_reset; read -r prev_weekly; read -r prev_weekly_reset; read -r prev_err_since; read -r prev_ts; read -r prev_last_success; read -r prev_lost_since; } < <(python3 -c "
 import json
 try:
     d=json.load(open('$USAGE_FILE'))
     print(d.get('pct','')); print(d.get('reset_ts','')); print(d.get('weekly_pct','')); print(d.get('weekly_reset_ts',''))
-    print(d.get('error_since_ts') or ''); print(d.get('ts') or ''); print(d.get('last_success_ts',''))
-except: print(); print(); print(); print(); print(); print(); print()
+    print(d.get('error_since_ts') or ''); print(d.get('ts') or ''); print(d.get('last_success_ts','')); print(d.get('reset_ts_lost_since',''))
+except: print(); print(); print(); print(); print(); print(); print(); print()
 " 2>/dev/null) || true
     fi
     local extra=""
@@ -124,6 +125,7 @@ except: print(); print(); print(); print(); print(); print(); print()
     [ -n "$prev_weekly" ] && extra+="\"weekly_pct\":$prev_weekly,"
     [ -n "$prev_weekly_reset" ] && extra+="\"weekly_reset_ts\":$prev_weekly_reset,"
     [ -n "$prev_last_success" ] && extra+="\"last_success_ts\":$prev_last_success,"
+    [ -n "$prev_lost_since" ] && extra+="\"reset_ts_lost_since\":$prev_lost_since,"
     local err_since="$prev_err_since"
     [ -z "$err_since" ] && err_since="${prev_ts:-$(date +%s)}"
     extra+="\"error_since_ts\":$err_since,"
@@ -188,7 +190,7 @@ except: print(); print(); print(); print(); print(); print(); print()
       attempt=$((attempt + 1))
       content=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
       if echo "$content" | grep -q "% used"; then return 0; fi
-      if echo "$content" | tail -5 | grep -q "Status dialog dismissed"; then return 2; fi
+      if echo "$content" | tail -5 | grep -qE "(Status|Settings) dialog dismissed"; then return 2; fi
       if echo "$content" | grep -q "Failed to load usage data"; then
         if echo "$content" | grep -q "rate_limit_error"; then return 0; fi
         return 1
@@ -206,25 +208,31 @@ except: print(); print(); print(); print(); print(); print(); print()
   fi
 
   # Watchdog: kill the tmux session if it has been failing or silently producing
-  # stale data for too long. Two triggers:
+  # stale data for too long. Three triggers:
   #   1. error_since_ts older than threshold (explicit failures: dismissed, parse_failed, …)
   #   2. last_success_ts older than threshold (no real parse — covers the silent-fallback case
   #      where the parser returned a stale pct without an error mező)
+  #   3. reset_ts_lost_since older than threshold (partial-parse loop: pct keeps being
+  #      scraped from scrollback but the Resets line never reappears — covers the
+  #      "Settings dialog dismissed" loop that masquerades as success)
   if [ -f "$USAGE_FILE" ]; then
-    local err_since last_success
-    { read -r err_since; read -r last_success; } < <(python3 -c "
+    local err_since last_success lost_since
+    { read -r err_since; read -r last_success; read -r lost_since; } < <(python3 -c "
 import json
 try:
     d = json.load(open('$USAGE_FILE'))
     print(d.get('error_since_ts') or '')
     print(d.get('last_success_ts') or '')
+    print(d.get('reset_ts_lost_since') or '')
 except:
-    print(''); print('')
+    print(''); print(''); print('')
 " 2>/dev/null) || true
     local now_ts; now_ts=$(date +%s)
     if [ -n "$err_since" ] && [ $(( now_ts - err_since )) -gt $STALE_RESTART_THRESHOLD ]; then
       $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
     elif [ -n "$last_success" ] && [ $(( now_ts - last_success )) -gt $STALE_RESTART_THRESHOLD ]; then
+      $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
+    elif [ -n "$lost_since" ] && [ $(( now_ts - lost_since )) -gt $STALE_RESTART_THRESHOLD ]; then
       $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
     fi
   fi
@@ -459,6 +467,24 @@ if session_pct is not None:
 if weekly_pct is not None: result["weekly_pct"] = weekly_pct
 if weekly_reset_ts is not None: result["weekly_reset_ts"] = weekly_reset_ts
 
+# Partial-parse fallback: pct was extracted but the Resets line drifted past the
+# 6-line find_reset window (or rendered late). Without this, the menu loses its
+# "(Xh Ym)" remaining display even though pct itself is valid.
+now_ts_partial = int(time.time())
+if "pct" in result and "reset_ts" not in result and isinstance(prev.get("reset_ts"), (int, float)):
+    val = prev["reset_ts"]
+    if val > now_ts_partial and val - now_ts_partial <= 5*3600 + 1800:
+        result["reset_ts"] = val
+if "weekly_pct" in result and "weekly_reset_ts" not in result and isinstance(prev.get("weekly_reset_ts"), (int, float)):
+    val = prev["weekly_reset_ts"]
+    if val > now_ts_partial:
+        result["weekly_reset_ts"] = val
+
+# Track partial-parse persistence: bash watchdog uses this to kill a stuck session
+# that keeps producing pct from scrollback but never a fresh Resets line.
+if "pct" in result and "reset_ts" not in result:
+    result["reset_ts_lost_since"] = prev.get("reset_ts_lost_since") or result["ts"]
+
 if "pct" not in result:
     full = "\n".join(lines)
     if "rate_limit_error" in full:
@@ -480,7 +506,7 @@ if "pct" not in result:
                     except: continue
     elif "OAuth token does not meet scope requirement" in full or "permission_error" in full:
         result["error"] = "oauth_scope_error"
-    elif "Status dialog dismissed" in full:
+    elif "Status dialog dismissed" in full or "Settings dialog dismissed" in full:
         result["error"] = "usage_unavailable"; result["error_detail"] = "dialog dismissed"
         result["diag"] = [l.rstrip() for l in lines if l.strip()][-15:]
     elif "Failed to load usage data" in full:
