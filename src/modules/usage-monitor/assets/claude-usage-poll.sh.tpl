@@ -171,15 +171,24 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
   send_usage_and_wait() {
     # Clear scrollback so the parser cannot match stale "% used" lines from a prior panel render
     $TMUX_BIN clear-history -t "$SESSION" 2>/dev/null
-    $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
-    sleep 0.5
+    # Reset input state: C-u wipes any residual prompt text without cycling the
+    # Claude UI mode. Escape used to be safe here, but the current UI interprets
+    # Escape on an empty prompt as "open Rewind/agent panel", which silently
+    # opens the wrong panel and breaks the /usage submission entirely.
+    $TMUX_BIN send-keys -t "$SESSION" C-u 2>/dev/null
+    sleep 0.3
     if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | grep -q "How is Claude doing"; then
       $TMUX_BIN send-keys -t "$SESSION" "0" 2>/dev/null
       sleep 1
     fi
-    $TMUX_BIN send-keys -t "$SESSION" "/usage" 2>/dev/null
-    sleep 0.5
-    $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
+    # Literal-mode burst (-l): deliver "/usage" as one chunk of characters.
+    # Claude UI only opens its autocomplete dropdown on character-by-character
+    # typing — burst delivery skips that, so Enter submits "/usage" directly
+    # as a slash command. The old per-key send opened the dropdown, and from
+    # there neither Escape+Enter (clears input → "Flowing… stop hooks") nor
+    # Tab+Enter (mode-cycle on fresh sessions → opens the wrong panel) reliably
+    # resolved the slash command.
+    $TMUX_BIN send-keys -l -t "$SESSION" "/usage" 2>/dev/null
     sleep 0.3
     $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
 
@@ -444,6 +453,15 @@ for idx, ln in enumerate(lines):
     if sum(t in ln for t in panel_tokens) >= 2:
         panel_start = idx
         break
+
+# Live-render check: only trust the panel if its "Esc to cancel" footer is
+# still on screen. clear-history only flushes scrollback, not the visible
+# pane — without this guard the parser keeps re-scraping closed-panel
+# residue (old % used + Resets lines) and reports it as a fresh parse,
+# silently freezing the menu on stale data while bypassing every staleness
+# guard (last_success_ts keeps refreshing, watchdog never fires).
+if panel_start >= 0 and not any("Esc to cancel" in ln for ln in lines[panel_start:]):
+    panel_start = -1
 
 for i, line in enumerate(lines):
     if panel_start < 0 or i < panel_start: continue
