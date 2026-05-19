@@ -416,7 +416,10 @@ def find_reset(lines, i, max_offset_secs=None):
     # max_offset_secs: drop implausibly far parses (e.g. session reset rolled +1 day
     # by parse_reset_ts when the time-only string already passed >10 min ago).
     now_ts = int(time.time())
-    for k in range(i + 1, min(i + 7, len(lines))):
+    # Wider lookahead (10 lines) — Anthropic may interleave the Resets line with
+    # extra metadata rows (cache info, sub-tier breakdowns, etc.); a 6-line
+    # window has already been hit once when the layout grew.
+    for k in range(i + 1, min(i + 11, len(lines))):
         ts = parse_reset_ts(lines[k])
         if ts is None:
             ts = parse_reset_relative(lines[k])
@@ -430,15 +433,15 @@ def find_reset(lines, i, max_offset_secs=None):
 session_pct = None; session_reset_ts = None
 weekly_pct  = None; weekly_reset_ts  = None
 
-# Loose panel header detection: at least 3 of the 4 expected tab labels.
-# This tolerates UI changes (localization, tab rename, ordering tweaks) while
-# remaining strict enough that random scrollback will not false-match. The
-# downstream label check ("session" / "week" in the line above "% used")
-# is the second line of defense.
-panel_tokens = ("Status", "Config", "Usage", "Stats")
+# Loose panel header detection: at least 2 of the 5 expected tab labels.
+# Anthropic has already added/renamed tabs once (Settings tab appeared on top of
+# Status/Config/Usage/Stats); a low threshold tolerates further drift while the
+# downstream "session"/"week" label check above "% used" remains the second
+# line of defense against random scrollback false-matches.
+panel_tokens = ("Settings", "Status", "Config", "Usage", "Stats")
 panel_start = -1
 for idx, ln in enumerate(lines):
-    if sum(t in ln for t in panel_tokens) >= 3:
+    if sum(t in ln for t in panel_tokens) >= 2:
         panel_start = idx
         break
 
@@ -448,7 +451,10 @@ for i, line in enumerate(lines):
     if not match: continue
     pct_val = int(match.group(1))
     label = ""
-    for j in range(i - 1, max(i - 3, -1), -1):
+    # Wider lookback (5 lines) \u2014 new panel layout interleaves Total cost / Total
+    # duration / Usage rows between the section header ("Current session") and
+    # the "% used" bar, so a 2-line window can miss the label entirely.
+    for j in range(i - 1, max(i - 6, -1), -1):
         lbl = lines[j].strip()
         if lbl and "\u2588" not in lbl and "\u258c" not in lbl and "% used" not in lbl:
             label = lbl; break
