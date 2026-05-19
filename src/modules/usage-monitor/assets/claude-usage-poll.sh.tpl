@@ -198,7 +198,11 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
       if [ $attempt -lt 15 ]; then sleep 0.2; else sleep 1; fi
       attempt=$((attempt + 1))
       content=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
-      if echo "$content" | grep -q "% used"; then return 0; fi
+      # Only accept the panel once the "Refreshing…" spinner is gone. The Claude
+      # UI renders stale "% used" + "Resets …" rows from the previous window
+      # while it loads fresh numbers from the server, so an early-bird "% used"
+      # match here would lock in the stale values for the rest of the cycle.
+      if echo "$content" | grep -q "% used" && ! echo "$content" | grep -q "Refreshing"; then return 0; fi
       if echo "$content" | tail -5 | grep -qE "(Status|Settings) dialog dismissed"; then return 2; fi
       if echo "$content" | grep -q "Failed to load usage data"; then
         if echo "$content" | grep -q "rate_limit_error"; then return 0; fi
@@ -461,6 +465,13 @@ for idx, ln in enumerate(lines):
 # silently freezing the menu on stale data while bypassing every staleness
 # guard (last_success_ts keeps refreshing, watchdog never fires).
 if panel_start >= 0 and not any("Esc to cancel" in ln for ln in lines[panel_start:]):
+    panel_start = -1
+
+# Loading-spinner guard: the Claude UI renders previous-window values + a
+# "Refreshing…" line while it loads the fresh counter. Without this guard the
+# bash side may have raced ahead of the spinner (broken timing, slow network)
+# and the parser would lock in last-window numbers as if they were fresh.
+if panel_start >= 0 and any("Refreshing" in ln for ln in lines[panel_start:]):
     panel_start = -1
 
 for i, line in enumerate(lines):
