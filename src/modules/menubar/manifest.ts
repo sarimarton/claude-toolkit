@@ -39,5 +39,13 @@ export const manifest: ModuleManifest = {
       filename: 'claude-kill.sh',
       executable: true,
     },
+    {
+      source: 'swiftbar-install.sh.tpl',
+      target: 'scripts',
+      filename: 'swiftbar-install.sh',
+      executable: true,
+    },
   ],
+  // Install SwiftBar.app (via brew cask) if missing, point it at the plugin dir, and launch it.
+  postInstall: '{{scripts_dir}}/swiftbar-install.sh',
 };
