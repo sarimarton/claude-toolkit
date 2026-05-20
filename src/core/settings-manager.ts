@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { HookRegistration, HookGroup, HookEvent, SidecarManifest, SidecarEntry, ResolvedConfig } from './types.js';
+import type { HookRegistration, HookGroup, HookEvent, SidecarManifest, SidecarEntry, SidecarAssetEntry, AssetTarget, ResolvedConfig } from './types.js';
 
 function settingsPath(config: ResolvedConfig): string {
   return path.join(config.claudeDir, 'settings.json');
@@ -148,6 +148,47 @@ export function unregisterHooks(
 export function getModuleHooks(config: ResolvedConfig, moduleId: string): SidecarEntry[] {
   const sidecar = readSidecar(config);
   return sidecar.entries.filter(e => e.moduleId === moduleId);
+}
+
+/** Record asset hashes for a module in the sidecar */
+export function recordAssetHashes(
+  config: ResolvedConfig,
+  moduleId: string,
+  assets: { filename: string; target: AssetTarget; contentHash: string }[],
+): void {
+  const sidecar = readSidecar(config);
+  if (!sidecar.assets) sidecar.assets = [];
+
+  // Remove old entries for this module
+  sidecar.assets = sidecar.assets.filter(a => a.moduleId !== moduleId);
+
+  // Add new entries
+  const now = new Date().toISOString();
+  for (const asset of assets) {
+    sidecar.assets.push({
+      moduleId,
+      filename: asset.filename,
+      target: asset.target,
+      contentHash: asset.contentHash,
+      installedAt: now,
+    });
+  }
+
+  writeSidecar(config, sidecar);
+}
+
+/** Get asset hashes for a module from the sidecar */
+export function getModuleAssetHashes(config: ResolvedConfig, moduleId: string): SidecarAssetEntry[] {
+  const sidecar = readSidecar(config);
+  return (sidecar.assets || []).filter(a => a.moduleId === moduleId);
+}
+
+/** Remove asset hashes for a module from the sidecar */
+export function removeAssetHashes(config: ResolvedConfig, moduleId: string): void {
+  const sidecar = readSidecar(config);
+  if (!sidecar.assets) return;
+  sidecar.assets = sidecar.assets.filter(a => a.moduleId !== moduleId);
+  writeSidecar(config, sidecar);
 }
 
 /** Check if a specific hook command is registered in settings.json */

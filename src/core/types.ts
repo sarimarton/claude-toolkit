@@ -148,10 +148,20 @@ export interface SidecarEntry {
   installedAt: string;
 }
 
+/** Sidecar asset entry — tracks installed files with content hashes */
+export interface SidecarAssetEntry {
+  moduleId: string;
+  filename: string;
+  target: AssetTarget;
+  contentHash: string;
+  installedAt: string;
+}
+
 /** Sidecar manifest file */
 export interface SidecarManifest {
   version: number;
   entries: SidecarEntry[];
+  assets?: SidecarAssetEntry[];
 }
 
 /** Module install status */

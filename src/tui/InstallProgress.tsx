@@ -3,8 +3,8 @@ import { Box, Text, useApp } from 'ink';
 import { resolveConfig, ensureInstallDirs, getTargetDir } from '../core/config.js';
 import { getAllManifests, getInstalledModuleIds, getModuleStatus } from '../core/module-registry.js';
 import { resolveInstall, resolveUninstall } from '../core/dependency-resolver.js';
-import { registerHooks, unregisterHooks } from '../core/settings-manager.js';
-import { buildVarMap, renderTemplate, installTemplate } from '../core/template-engine.js';
+import { registerHooks, unregisterHooks, recordAssetHashes, removeAssetHashes } from '../core/settings-manager.js';
+import { buildVarMap, renderTemplate, installTemplate, renderTemplateFile, contentHash } from '../core/template-engine.js';
 import type { ModuleManifest, ResolvedConfig } from '../core/types.js';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
@@ -34,6 +34,7 @@ function getModulesDir(): string {
 
 function doInstall(manifest: ModuleManifest, config: ResolvedConfig, modulesDir: string): void {
   const vars = buildVarMap(config);
+  const assetHashes: { filename: string; target: import('../core/types.js').AssetTarget; contentHash: string }[] = [];
 
   // Install assets
   for (const asset of manifest.assets) {
@@ -41,6 +42,8 @@ function doInstall(manifest: ModuleManifest, config: ResolvedConfig, modulesDir:
     const targetDir = getTargetDir(config, asset.target);
     const targetPath = path.join(targetDir, asset.filename);
     installTemplate(tplPath, targetPath, vars, asset.executable !== false);
+    const rendered = renderTemplateFile(tplPath, vars);
+    assetHashes.push({ filename: asset.filename, target: asset.target, contentHash: contentHash(rendered) });
   }
 
   // Install commands
@@ -50,8 +53,13 @@ function doInstall(manifest: ModuleManifest, config: ResolvedConfig, modulesDir:
       const targetDir = getTargetDir(config, cmd.target);
       const targetPath = path.join(targetDir, cmd.filename);
       installTemplate(tplPath, targetPath, vars, cmd.executable === true);
+      const rendered = renderTemplateFile(tplPath, vars);
+      assetHashes.push({ filename: cmd.filename, target: cmd.target, contentHash: contentHash(rendered) });
     }
   }
+
+  // Record asset hashes in sidecar
+  recordAssetHashes(config, manifest.id, assetHashes);
 
   // Register hooks (resolve template vars in commands)
   if (manifest.hooks.length > 0) {
@@ -86,7 +94,8 @@ function doUninstall(manifest: ModuleManifest, config: ResolvedConfig): void {
     }
   }
 
-  // Unregister hooks
+  // Remove asset hashes and unregister hooks
+  removeAssetHashes(config, manifest.id);
   unregisterHooks(config, manifest.id);
 
   // Run post-uninstall command

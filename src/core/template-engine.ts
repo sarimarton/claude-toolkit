@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import type { ResolvedConfig } from './types.js';
 
 /** Build the variable map from resolved config */
@@ -38,6 +39,11 @@ export function renderTemplate(template: string, vars: Record<string, string>): 
 export function renderTemplateFile(tplPath: string, vars: Record<string, string>): string {
   const template = fs.readFileSync(tplPath, 'utf-8');
   return renderTemplate(template, vars);
+}
+
+/** Compute SHA-256 hash of content */
+export function contentHash(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
 }
 
 /** Render a template file and write the result to the target path */

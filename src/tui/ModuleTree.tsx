@@ -3,8 +3,8 @@ import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { resolveConfig, ensureInstallDirs, getTargetDir } from '../core/config.js';
 import { getAllManifests, getAllModuleStatuses, getInstalledModuleIds } from '../core/module-registry.js';
 import { resolveInstall, resolveUninstall } from '../core/dependency-resolver.js';
-import { registerHooks, unregisterHooks } from '../core/settings-manager.js';
-import { buildVarMap, renderTemplate, installTemplate } from '../core/template-engine.js';
+import { registerHooks, unregisterHooks, recordAssetHashes, removeAssetHashes } from '../core/settings-manager.js';
+import { buildVarMap, renderTemplate, installTemplate, renderTemplateFile, contentHash } from '../core/template-engine.js';
 import { platformMatches } from '../core/platform.js';
 import type { ModuleManifest, ModuleStatusInfo, ResolvedConfig } from '../core/types.js';
 import { execSync } from 'node:child_process';
@@ -123,18 +123,24 @@ export function ModuleTree() {
       for (const id of result.order) {
         const manifest = manifests.get(id)!;
         try {
+          const assetHashes: { filename: string; target: import('../core/types.js').AssetTarget; contentHash: string }[] = [];
           for (const asset of manifest.assets) {
             const tplPath = path.join(modulesDir, manifest.id, 'assets', asset.source);
             const targetDir = getTargetDir(config, asset.target);
             installTemplate(tplPath, path.join(targetDir, asset.filename), vars, asset.executable !== false);
+            const rendered = renderTemplateFile(tplPath, vars);
+            assetHashes.push({ filename: asset.filename, target: asset.target, contentHash: contentHash(rendered) });
           }
           if (manifest.commands) {
             for (const cmd of manifest.commands) {
               const tplPath = path.join(modulesDir, manifest.id, 'assets', cmd.source);
               const targetDir = getTargetDir(config, cmd.target);
               installTemplate(tplPath, path.join(targetDir, cmd.filename), vars, cmd.executable === true);
+              const rendered = renderTemplateFile(tplPath, vars);
+              assetHashes.push({ filename: cmd.filename, target: cmd.target, contentHash: contentHash(rendered) });
             }
           }
+          recordAssetHashes(config, manifest.id, assetHashes);
           if (manifest.hooks.length > 0) {
             const resolvedHooks = manifest.hooks.map(h => ({ ...h, command: renderTemplate(h.command, vars) }));
             registerHooks(config, manifest.id, resolvedHooks);
@@ -180,6 +186,7 @@ export function ModuleTree() {
           if (fs.existsSync(p)) fs.unlinkSync(p);
         }
       }
+      removeAssetHashes(config, manifest.id);
       unregisterHooks(config, manifest.id);
       if (manifest.postUninstall) {
         try {
@@ -219,8 +226,8 @@ export function ModuleTree() {
             const isSelected = selected.has(s.manifest.id);
             const pm = platformMatches(s.manifest.platform);
 
-            const statusIcon = s.status === 'installed' ? '✓' : s.status === 'partial' ? '◐' : '○';
-            const statusColor = s.status === 'installed' ? 'green' : s.status === 'partial' ? 'yellow' : 'gray';
+            const statusIcon = s.status === 'installed' ? '✓' : s.status === 'outdated' ? '↻' : s.status === 'partial' ? '◐' : '○';
+            const statusColor = s.status === 'installed' ? 'green' : s.status === 'outdated' ? 'cyan' : s.status === 'partial' ? 'yellow' : 'gray';
 
             return (
               <Box key={s.manifest.id}>

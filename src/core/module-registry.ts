@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ModuleManifest, ModuleStatusInfo, ResolvedConfig } from './types.js';
 import { getTargetDir } from './config.js';
-import { getModuleHooks } from './settings-manager.js';
+import { getModuleHooks, getModuleAssetHashes } from './settings-manager.js';
 import { platformMatches } from './platform.js';
+import { buildVarMap, renderTemplateFile, contentHash } from './template-engine.js';
 
 // Static imports of all module manifests
 import { manifest as topicMarkers } from '../modules/topic-markers/manifest.js';
@@ -47,6 +49,11 @@ export function getAllManifests(): Map<string, ModuleManifest> {
 /** Get a single manifest by ID */
 export function getManifest(id: string): ModuleManifest | undefined {
   return ALL_MANIFESTS.find(m => m.id === id);
+}
+
+function getModulesDir(): string {
+  const thisFile = fileURLToPath(import.meta.url);
+  return path.resolve(path.dirname(thisFile), '..', 'modules');
 }
 
 /** Check the install status of a module */
@@ -97,7 +104,38 @@ export function getModuleStatus(manifest: ModuleManifest, config: ResolvedConfig
     info.installedAssets.length === totalAssets &&
     info.registeredHooks === info.expectedHooks
   ) {
-    info.status = 'installed';
+    // Check for outdated: compare content hashes
+    const storedHashes = getModuleAssetHashes(config, manifest.id);
+    if (storedHashes.length > 0) {
+      const vars = buildVarMap(config);
+      const modulesDir = getModulesDir();
+      const allAssets = [...manifest.assets, ...(manifest.commands || [])];
+      const hashMap = new Map(storedHashes.map(h => [h.filename, h.contentHash]));
+
+      for (const asset of allAssets) {
+        const storedHash = hashMap.get(asset.filename);
+        if (!storedHash) {
+          info.status = 'outdated';
+          break;
+        }
+        try {
+          const tplPath = path.join(modulesDir, manifest.id, 'assets', asset.source);
+          const rendered = renderTemplateFile(tplPath, vars);
+          if (contentHash(rendered) !== storedHash) {
+            info.status = 'outdated';
+            break;
+          }
+        } catch {
+          // Template read failed — can't determine, keep as installed
+        }
+      }
+      if (info.status !== 'outdated') {
+        info.status = 'installed';
+      }
+    } else {
+      // No hashes stored (pre-hash installation) — treat as installed
+      info.status = 'installed';
+    }
   } else {
     info.status = 'partial';
   }

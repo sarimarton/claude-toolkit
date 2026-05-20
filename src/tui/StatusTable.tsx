@@ -93,6 +93,8 @@ export function StatusTable({ detailed = false }: Props) {
         <Text dimColor>
           {statuses.filter(s => s.status === 'installed').length} installed, {' '}
           {statuses.filter(s => s.status === 'not_installed').length} available
+          {statuses.filter(s => s.status === 'outdated').length > 0 &&
+            `, ${statuses.filter(s => s.status === 'outdated').length} outdated`}
         </Text>
       </Box>
     </Box>
