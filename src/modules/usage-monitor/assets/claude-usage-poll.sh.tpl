@@ -617,7 +617,9 @@ if "pct" in result and "reset_ts" in result:
 accounts=""
 config_error=""
 if [ -f "$CONFIG_FILE" ]; then
-  if ! $YQ -e '.' "$CONFIG_FILE" >/dev/null 2>&1; then
+  # Note: no `-e` — a comments-only YAML evaluates to `null`, which `-e` would
+  # treat as failure. Without `-e`, yq returns non-zero only on real syntax errors.
+  if ! $YQ '.' "$CONFIG_FILE" >/dev/null 2>&1; then
     config_error="config_parse_failed"
   else
     accounts=$($YQ -r '.accounts[]? | .name + "\t" + .token' "$CONFIG_FILE" 2>/dev/null)
