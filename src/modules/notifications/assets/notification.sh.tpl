@@ -13,6 +13,10 @@ cwd=$(echo "$input" | {{jq}} -r '.cwd // ""')
 
 [ -z "$message" ] && exit 0
 
+# The Notification event also fires on idle ("Claude is waiting for your input"),
+# not just on real prompts. Skip those so only actual questions pop up.
+[[ "$message" == *"waiting for your input"* ]] && exit 0
+
 # Skip notifications from the usage monitor session
 [[ "$CLAUDE_USAGE_MON" == "1" ]] && exit 0
 
