@@ -43,6 +43,7 @@ CLAUDE={{claude}}
 CONFIG_FILE="{{config_file}}"
 USAGE_DIR="{{home}}/.local/share/claude-usage"
 STALE_RESTART_THRESHOLD=600  # seconds; if error has persisted longer, kill stuck tmux session
+MAX_SESSION_LIFETIME=7200    # seconds; cap monitor session age (defense in depth vs userland leaks in long-running claude proc)
 
 # ── Account discovery ───────────────────────────────────
 YQ={{yq}}
@@ -218,6 +219,18 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
     claude_cmd="CLAUDE_CODE_OAUTH_TOKEN='$ACCT_TOKEN' CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions"
   else
     claude_cmd="unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions"
+  fi
+
+  # Lifetime cap: kill the monitor session every MAX_SESSION_LIFETIME seconds even
+  # when healthy. The claude process inside the session is long-running and may
+  # accumulate userland RSS — periodic recreate bounds the leak window.
+  if $TMUX_BIN has-session -t "$SESSION" 2>/dev/null; then
+    local sess_created; sess_created=$($TMUX_BIN display-message -t "$SESSION" -p '#{session_created}' 2>/dev/null)
+    if [ -n "$sess_created" ] && [ "$sess_created" -gt 0 ] 2>/dev/null; then
+      if [ $(( $(date +%s) - sess_created )) -gt $MAX_SESSION_LIFETIME ]; then
+        $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
+      fi
+    fi
   fi
 
   # Watchdog: kill the tmux session if it has been failing or silently producing
