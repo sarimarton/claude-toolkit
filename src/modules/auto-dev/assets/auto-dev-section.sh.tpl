@@ -95,7 +95,8 @@ if [[ -n "$MANAGED_REPOS" ]]; then
             *)         LAST_ICON=""  ;;
         esac
 
-        TITLE="$REPO_NAME"
+        [[ "$RUNNER_STATUS" == "running" ]] && DOT="🟢" || DOT="🔴"
+        TITLE="$DOT $REPO_NAME"
         [[ -n "$LAST_ICON" && -n "$LAST_TODO" ]] && TITLE="$TITLE  $LAST_ICON $LAST_TODO"
         echo "$TITLE | size=13"
 
