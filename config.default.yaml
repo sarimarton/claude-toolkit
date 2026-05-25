@@ -23,3 +23,13 @@ chart:
 #     primary: true
 #   - name: Bob
 #     token: sk-ant-oat01-...
+
+# Auto-dev module configuration (optional)
+# Lists repos where auto-dev is installed. Used by the SwiftBar section.
+# Run: auto-dev-runner-setup.sh <owner/repo> to install into a repo.
+# autoDev:
+#   timeBucket:
+#     minPctToStart: 50    # Skip iteration if Claude usage % >= this value
+#   repos:
+#     - github: owner/repo-name
+#       local: /Users/you/repos/repo-name

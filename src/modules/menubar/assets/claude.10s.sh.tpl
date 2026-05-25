@@ -483,3 +483,8 @@ if $MULTI_ACCOUNT; then
 else
     echo "Stop monitor | bash=$TMUX_BIN param1=kill-session param2=-t param3=claude_usage_mon terminal=false refresh=true"
 fi
+
+# ── Optional module extensions ────────────────────────
+if [[ -f "$HELPERS/auto-dev-section.sh" ]]; then
+  bash "$HELPERS/auto-dev-section.sh"
+fi
