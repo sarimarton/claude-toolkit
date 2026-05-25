@@ -520,6 +520,7 @@ fi
 
 echo "---"
 echo "Refresh now | bash=$POLL_SCRIPT terminal=false refresh=true shortcut=CMD+OPT+R"
+echo "Refresh caches | bash=/bin/sh param1=-c param2=\"rm -f /tmp/claude-toolkit-*.json\" terminal=false refresh=true color=#888888 size=12"
 echo "Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
 echo "View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/ terminal=false"
 if $MULTI_ACCOUNT; then
