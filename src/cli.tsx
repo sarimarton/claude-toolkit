@@ -3,6 +3,7 @@ import meow from 'meow';
 import React from 'react';
 import { render } from 'ink';
 import { App } from './tui/App.js';
+import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -49,6 +50,8 @@ if (command === 'update') {
   execSync('npm run build', { cwd: installDir, stdio: 'inherit' });
   console.log('Upgrading installed modules...');
   execSync(`${process.execPath} ${path.join(installDir, 'dist', 'cli.js')} upgrade`, { stdio: 'inherit' });
+  // Clear update-check cache so the menu reflects the new version immediately
+  try { fs.unlinkSync('/tmp/claude-toolkit-update-check.json'); } catch { /* ok if missing */ }
   process.exit(0);
 }
 
