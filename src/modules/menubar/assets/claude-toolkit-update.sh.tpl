@@ -1,5 +1,11 @@
 #!/bin/sh
-# claude-toolkit-update.sh — wrapper for menubar "Update available" action
-# Avoids SwiftBar terminal env-export quoting issues by being a plain sh script.
+# claude-toolkit-update.sh — menubar update action
+# Opens Terminal.app directly via osascript to avoid SwiftBar terminal=true
+# zsh history expansion bugs (! in env var values like OS_APPEARANCE=Dark).
 export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
-exec node "{{repo_dir}}/dist/cli.js" update
+REPO='{{repo_dir}}'
+osascript \
+  -e 'tell application "Terminal"' \
+  -e '  activate' \
+  -e "  do script \"node '$REPO/dist/cli.js' update; echo ''; echo 'Update complete. Close this window.'; read\"" \
+  -e 'end tell'

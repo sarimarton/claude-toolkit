@@ -286,7 +286,7 @@ if [[ -f "$UPDATE_CACHE" && -d "$INSTALL_DIR/.git" ]]; then
     remote_sha=$(grep -oE '"sha":"[0-9a-f]{40}"' "$UPDATE_CACHE" | grep -oE '[0-9a-f]{40}' | head -1)
     local_sha=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null)
     if [[ -n "$remote_sha" && -n "$local_sha" && "$remote_sha" != "$local_sha" ]]; then
-        echo "⬆ Update available | color=#0a84ff size=13 bash=$HELPERS/claude-toolkit-update.sh terminal=true refresh=true"
+        echo "⬆ Update available | color=#0a84ff size=13 bash=$HELPERS/claude-toolkit-update.sh terminal=false refresh=true"
     fi
 fi
 
