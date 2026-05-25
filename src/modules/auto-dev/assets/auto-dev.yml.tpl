@@ -475,8 +475,7 @@ jobs:
           PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 
           # Link PR back to issue
-          gh issue comment "$ISSUE_NUMBER" --body "🤖 **Auto-dev** — Draft PR opened: #${PR_NUMBER}
-<!-- auto-dev:pr:${PR_NUMBER} -->"
+          gh issue comment "$ISSUE_NUMBER" --body "$(printf '%s\n%s\n' "🤖 **Auto-dev** — Draft PR opened: #${PR_NUMBER}" "<!-- auto-dev:pr:${PR_NUMBER} -->")"
 
           gh issue edit "$ISSUE_NUMBER" \
             --remove-label "ai:ready" \
@@ -583,9 +582,7 @@ jobs:
               --remove-label "ai:in-progress" \
               --add-label "ai:done" 2>/dev/null || true
           else
-            gh pr comment "$PR_NUMBER" --body "🤖 **Auto-dev** — ✓ \`$TODO\`
-$SUMMARY
-($REMAINING task(s) remaining)"
+            gh pr comment "$PR_NUMBER" --body "$(printf '%s\n%s\n%s\n' "🤖 **Auto-dev** — ✓ \`$TODO\`" "$SUMMARY" "($REMAINING task(s) remaining)")"
           fi
 
       - name: "in-progress → handle blocked/question"
@@ -599,13 +596,15 @@ $SUMMARY
           if [[ "$OUTCOME" == "blocked" ]]; then
             REASON=$(jq -r '.result // . | if type == "object" then .reason else . end // "Blocked."' "$WORK_DIR/implement-result.json" 2>/dev/null)
             SUGGESTION=$(jq -r '.result // . | if type == "object" then .suggestion else . end // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
-            gh pr comment "$PR_NUMBER" --body "🤖 **Auto-dev** — ⊘ Blocked: $REASON${SUGGESTION:+
-Suggestion: $SUGGESTION}"
+            BODY="🤖 **Auto-dev** — ⊘ Blocked: $REASON"
+            [[ -n "$SUGGESTION" ]] && BODY=$(printf '%s\n%s' "$BODY" "Suggestion: $SUGGESTION")
+            gh pr comment "$PR_NUMBER" --body "$BODY"
           else
             QUESTION=$(jq -r '.result // . | if type == "object" then .text else . end // "Question."' "$WORK_DIR/implement-result.json" 2>/dev/null)
             CONTEXT=$(jq -r '.result // . | if type == "object" then .context else . end // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
-            gh pr comment "$PR_NUMBER" --body "🤖 **Auto-dev** — ❓ $QUESTION${CONTEXT:+
-Context: $CONTEXT}"
+            BODY="🤖 **Auto-dev** — ❓ $QUESTION"
+            [[ -n "$CONTEXT" ]] && BODY=$(printf '%s\n%s' "$BODY" "Context: $CONTEXT")
+            gh pr comment "$PR_NUMBER" --body "$BODY"
           fi
           gh pr edit "$PR_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
           gh issue edit "$ISSUE_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
