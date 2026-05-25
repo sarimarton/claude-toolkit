@@ -180,6 +180,7 @@ if [[ -n "$MANAGED_REPOS" ]]; then
         echo "--Workflow runs | href=https://github.com/$REPO/actions/workflows/auto-dev.yml size=12"
         echo "--Repo | href=https://github.com/$REPO size=12"
         echo "-----"
+        echo "--Config… | bash=$SCRIPTS_DIR/auto-dev-config.sh param1=$REPO terminal=false refresh=false size=12"
         echo "--Reinstall Auto-dev… | bash=$SCRIPTS_DIR/auto-dev-reinstall.sh param1=$REPO terminal=false refresh=false size=12"
 
     done <<< "$MANAGED_REPOS"

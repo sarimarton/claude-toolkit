@@ -85,6 +85,16 @@ jobs:
       matrix: ${{ steps.get-issues.outputs.matrix }}
       has_issues: ${{ steps.get-issues.outputs.has_issues }}
     steps:
+      - name: Load max issues from config
+        id: repo-config
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          RAW=$(gh api "repos/$GH_REPO/actions/variables/AUTO_DEV_CONFIG" --jq '.value' 2>/dev/null || echo '{}')
+          MAX=$(echo "$RAW" | jq -r '.max_issues_per_run // empty' 2>/dev/null)
+          echo "max_issues=${MAX:-${{ env.MAX_ISSUES_PER_RUN }}}" >> $GITHUB_OUTPUT
+
       - name: Get issues to process
         id: get-issues
         env:
@@ -123,7 +133,7 @@ jobs:
           TOTAL=$(echo "$ALL_ISSUES" | jq 'length')
           echo "Found $TOTAL issue(s) with ai* labels"
 
-          issues=$(echo "$ALL_ISSUES" | jq -c --argjson max "${{ env.MAX_ISSUES_PER_RUN }}" '
+          issues=$(echo "$ALL_ISSUES" | jq -c --argjson max "${{ steps.repo-config.outputs.max_issues }}" '
             [.[] | {
               number,
               priority: (
@@ -193,6 +203,17 @@ jobs:
           gh label create "ai:epic"        --color "e99695" --description "Auto-dev: epic/kickoff"      --force
           gh label create "opus"           --color "7057ff" --description "Auto-dev: use Opus model"    --force
           gh label create "haiku"          --color "006b75" --description "Auto-dev: use Haiku model"   --force
+
+      - name: Load repo config
+        id: repo-config
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          RAW=$(gh api "repos/$GH_REPO/actions/variables/AUTO_DEV_CONFIG" --jq '.value' 2>/dev/null || echo '{}')
+          echo "create_issues=$(echo "$RAW"  | jq -r '.create_issues    // true')" >> $GITHUB_OUTPUT
+          echo "create_prs=$(echo "$RAW"     | jq -r '.create_prs       // true')" >> $GITHUB_OUTPUT
+          echo "push_commits=$(echo "$RAW"   | jq -r '.push_commits     // true')" >> $GITHUB_OUTPUT
 
       - name: Determine current state
         id: state
@@ -376,13 +397,15 @@ jobs:
           LHF=$(jq -r '.result // . | if type == "object" then (.lhf // []) else [] end' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
 
           SUB_ISSUES=""
-          while IFS= read -r item; do
-            [[ -z "$item" ]] && continue
-            TITLE=$(echo "$item" | jq -r '.title')
-            BODY=$(echo "$item" | jq -r '.body')
-            NEW_URL=$(gh issue create --title "$TITLE" --body "$BODY" --label "ai" 2>/dev/null || true)
-            [[ -n "$NEW_URL" ]] && SUB_ISSUES="${SUB_ISSUES}"$'\n'"- ${NEW_URL}"
-          done < <(echo "$LHF" | jq -c '.[]' 2>/dev/null)
+          if [[ "${{ steps.repo-config.outputs.create_issues }}" != "false" ]]; then
+            while IFS= read -r item; do
+              [[ -z "$item" ]] && continue
+              TITLE=$(echo "$item" | jq -r '.title')
+              BODY=$(echo "$item" | jq -r '.body')
+              NEW_URL=$(gh issue create --title "$TITLE" --body "$BODY" --label "ai" 2>/dev/null || true)
+              [[ -n "$NEW_URL" ]] && SUB_ISSUES="${SUB_ISSUES}"$'\n'"- ${NEW_URL}"
+            done < <(echo "$LHF" | jq -c '.[]' 2>/dev/null)
+          fi
 
           {
             echo "🤖 **Auto-dev** — Epic detected"
@@ -483,7 +506,7 @@ jobs:
           echo "tasks=$(echo "$TASKS" | jq -c .)" >> $GITHUB_OUTPUT
 
       - name: "ready → create branch and draft PR"
-        if: steps.state.outputs.state == 'ready' && steps.state.outputs.pr_number == '' && steps.plan.outputs.tasks != '[]'
+        if: steps.state.outputs.state == 'ready' && steps.state.outputs.pr_number == '' && steps.plan.outputs.tasks != '[]' && steps.repo-config.outputs.create_prs != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -595,7 +618,9 @@ jobs:
             git add -A
             if ! git diff --cached --quiet; then
               git commit -m "$(echo "$NEXT_TODO" | cut -c1-72)"
-              git push
+              if [[ "${{ steps.repo-config.outputs.push_commits }}" != "false" ]]; then
+                git push
+              fi
             fi
             # Check off the todo in PR description
             UPDATED_BODY=$(echo "$PR_BODY" | sed "0,/- \[ \] $(echo "$NEXT_TODO" | sed 's/[[\.*^$()+?{}|]/\\&/g')/{s/- \[ \] /- [x] /}")
