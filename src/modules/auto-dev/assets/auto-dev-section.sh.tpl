@@ -95,14 +95,9 @@ if [[ -n "$MANAGED_REPOS" ]]; then
             *)         LAST_ICON=""  ;;
         esac
 
-        if [[ "$RUNNER_STATUS" == "running" ]]; then
-            DOT_ANSI=$'\033[38;2;48;209;88m●\033[0m'
-        else
-            DOT_ANSI=$'\033[38;2;255;69;58m●\033[0m'
-        fi
-        TITLE="$REPO_NAME"
+        TITLE="● $REPO_NAME"
         [[ -n "$LAST_ICON" && -n "$LAST_TODO" ]] && TITLE="$TITLE  $LAST_ICON $LAST_TODO"
-        echo "$DOT_ANSI $TITLE | size=13 ansi=true"
+        echo "$TITLE | size=13 color=$RUNNER_COLOR"
 
         # Runner controls
         echo "--● Runner: $RUNNER_STATUS | color=$RUNNER_COLOR size=12"
