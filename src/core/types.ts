@@ -122,8 +122,10 @@ export interface ResolvedConfig {
   scriptsDir: string;
   /** Commands directory */
   commandsDir: string;
-  /** SwiftBar directory */
+  /** SwiftBar deploy directory (~/.config/claude-toolkit/swiftbar — where assets land) */
   swiftbarDir: string;
+  /** SwiftBar plugin directory (where SwiftBar looks — contains symlinks to swiftbarDir) */
+  swiftbarPluginDir: string;
   /** SwiftBar helpers directory */
   helpersDir: string;
   /** macOS LaunchAgents directory (~/Library/LaunchAgents) */

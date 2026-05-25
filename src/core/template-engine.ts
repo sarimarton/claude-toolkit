@@ -17,6 +17,7 @@ export function buildVarMap(config: ResolvedConfig): Record<string, string> {
     scripts_dir: config.scriptsDir,
     commands_dir: config.commandsDir,
     swiftbar_dir: config.swiftbarDir,
+    swiftbar_plugin_dir: config.swiftbarPluginDir,
     helpers_dir: config.helpersDir,
     launch_agents_dir: config.launchAgentsDir,
     claude_dir: config.claudeDir,

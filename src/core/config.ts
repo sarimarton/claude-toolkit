@@ -52,12 +52,14 @@ export function resolveConfig(): ResolvedConfig {
   const scriptsDir = path.join(installDir, 'scripts');
   const commandsDir = path.join(installDir, 'commands');
   const helpersDir = path.join(installDir, 'helpers');
+  const swiftbarDir = path.join(installDir, 'swiftbar');
 
-  // SwiftBar: read actual plugin directory from macOS defaults, fall back to ~/.config/swiftbar
-  let swiftbarDir = path.join(HOME, '.config', 'swiftbar');
+  // SwiftBar plugin dir: where SwiftBar looks (macOS defaults or ~/.config/swiftbar).
+  // This is separate from swiftbarDir (the deploy target inside installDir).
+  let swiftbarPluginDir = path.join(HOME, '.config', 'swiftbar');
   try {
     const plist = execSync('defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null', { encoding: 'utf-8' }).trim();
-    if (plist) swiftbarDir = plist;
+    if (plist) swiftbarPluginDir = plist;
   } catch {
     // SwiftBar not installed or no preference set — use default
   }
@@ -74,6 +76,7 @@ export function resolveConfig(): ResolvedConfig {
     scriptsDir,
     commandsDir,
     swiftbarDir,
+    swiftbarPluginDir,
     helpersDir,
     launchAgentsDir: path.join(HOME, 'Library', 'LaunchAgents'),
     claudeDir: path.join(HOME, '.claude'),

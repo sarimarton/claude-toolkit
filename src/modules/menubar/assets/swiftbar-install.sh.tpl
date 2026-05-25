@@ -7,7 +7,8 @@
 
 set -euo pipefail
 
-PLUGIN_DIR="{{swiftbar_dir}}"
+DEPLOY_DIR="{{swiftbar_dir}}"
+PLUGIN_DIR="{{swiftbar_plugin_dir}}"
 APP_PATHS=("/Applications/SwiftBar.app" "{{home}}/Applications/SwiftBar.app")
 
 swiftbar_installed() {
@@ -31,9 +32,20 @@ else
   brew install --cask swiftbar >&2
 fi
 
-# 2. Point SwiftBar at the toolkit plugin directory (the same dir the plugin was deployed to).
+# 2. Point SwiftBar at the plugin dir and create symlinks for deployed plugins.
 mkdir -p "$PLUGIN_DIR"
 defaults write com.ameba.SwiftBar PluginDirectory "$PLUGIN_DIR" >&2
+
+# Symlink each deployed .sh from the internal deploy dir into the SwiftBar plugin dir.
+# Skips real (non-symlink) files so hand-managed plugins are never overwritten.
+for deployed in "$DEPLOY_DIR"/*.sh; do
+  [ -f "$deployed" ] || continue
+  filename=$(basename "$deployed")
+  link="$PLUGIN_DIR/$filename"
+  if [ ! -e "$link" ] || [ -L "$link" ]; then
+    ln -sfn "$deployed" "$link"
+  fi
+done
 
 # 3. Launch (or refresh) SwiftBar so the menu shows up immediately.
 if pgrep -x SwiftBar >/dev/null 2>&1; then
