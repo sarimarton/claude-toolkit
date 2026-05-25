@@ -514,13 +514,12 @@ fi
 # ── Controls ─────────────────────────────────────────────
 
 echo "---"
-echo "Refresh now | bash=$POLL_SCRIPT terminal=false refresh=true shortcut=CMD+OPT+R"
-echo "Refresh caches | bash=/bin/sh param1=-c param2=\"rm -f /tmp/claude-toolkit-*.json\" terminal=false refresh=true size=12"
-echo "Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
-echo "View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/ terminal=false"
+echo "Tools"
+echo "-- Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
+echo "-- View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/ terminal=false"
 if $MULTI_ACCOUNT; then
-    echo "Stop all monitors | bash=/usr/bin/env param1=bash param2=-c param3=\"$TMUX_BIN ls -F '#{session_name}' 2>/dev/null | grep '^claude_usage_mon' | xargs -I{} $TMUX_BIN kill-session -t {}\" terminal=false refresh=true"
+    echo "-- Stop all monitors | bash=/usr/bin/env param1=bash param2=-c param3=\"$TMUX_BIN ls -F '#{session_name}' 2>/dev/null | grep '^claude_usage_mon' | xargs -I{} $TMUX_BIN kill-session -t {}\" terminal=false refresh=true"
 else
-    echo "Stop monitor | bash=$TMUX_BIN param1=kill-session param2=-t param3=claude_usage_mon terminal=false refresh=true"
+    echo "-- Stop monitor | bash=$TMUX_BIN param1=kill-session param2=-t param3=claude_usage_mon terminal=false refresh=true"
 fi
 
