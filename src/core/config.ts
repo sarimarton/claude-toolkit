@@ -1,11 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
 import type { ResolvedConfig } from './types.js';
 
 const HOME = process.env.HOME || '/tmp';
 const CONFIG_DIR = path.join(HOME, '.config', 'claude-toolkit');
+// Three levels up from dist/core/config.js → the git repo root
+const REPO_DIR = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
 
 interface UserConfig {
@@ -72,6 +75,7 @@ export function resolveConfig(): ResolvedConfig {
     hs: p.hs || '/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs',
     home: HOME,
     installDir,
+    repoDir: REPO_DIR,
     hooksDir,
     scriptsDir,
     commandsDir,

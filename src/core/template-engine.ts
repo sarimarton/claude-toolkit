@@ -13,6 +13,7 @@ export function buildVarMap(config: ResolvedConfig): Record<string, string> {
     hs: config.hs,
     home: config.home,
     install_dir: config.installDir,
+    repo_dir: config.repoDir,
     hooks_dir: config.hooksDir,
     scripts_dir: config.scriptsDir,
     commands_dir: config.commandsDir,

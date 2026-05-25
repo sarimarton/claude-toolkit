@@ -253,7 +253,7 @@ echo "---"
 
 # ── Update check ─────────────────────────────────────────
 
-INSTALL_DIR="{{install_dir}}"
+INSTALL_DIR="{{repo_dir}}"
 UPDATE_CACHE="/tmp/claude-toolkit-update-check.json"
 UPDATE_CACHE_TTL=3600  # 1 hour
 
@@ -286,7 +286,7 @@ if [[ -f "$UPDATE_CACHE" && -d "$INSTALL_DIR/.git" ]]; then
     remote_sha=$(grep -oE '"sha":"[0-9a-f]{40}"' "$UPDATE_CACHE" | grep -oE '[0-9a-f]{40}' | head -1)
     local_sha=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null)
     if [[ -n "$remote_sha" && -n "$local_sha" && "$remote_sha" != "$local_sha" ]]; then
-        echo "⬆ Update available | color=#0a84ff size=13 bash={{install_dir}}/dist/cli.js param1=update terminal=true refresh=true"
+        echo "⬆ Update available | color=#0a84ff size=13 bash={{repo_dir}}/dist/cli.js param1=update terminal=true refresh=true"
     fi
 fi
 

@@ -116,6 +116,8 @@ export interface ResolvedConfig {
   home: string;
   /** Base install directory (~/.config/claude-toolkit) */
   installDir: string;
+  /** Git repo directory (~/.local/share/claude-toolkit) */
+  repoDir: string;
   /** Hooks directory */
   hooksDir: string;
   /** Scripts directory */
