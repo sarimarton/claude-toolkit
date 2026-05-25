@@ -48,6 +48,12 @@ export const manifest: ModuleManifest = {
       executable: true,
     },
     {
+      source: 'auto-dev-attach.sh.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-attach.sh',
+      executable: true,
+    },
+    {
       source: 'auto-dev.yml.tpl',
       target: 'scripts',
       filename: 'auto-dev.yml',

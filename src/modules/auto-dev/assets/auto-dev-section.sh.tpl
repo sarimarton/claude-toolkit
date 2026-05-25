@@ -104,7 +104,7 @@ if [[ -n "$MANAGED_REPOS" ]]; then
         if [[ "$RUNNER_STATUS" == "stopped" ]]; then
             echo "--Start runner | bash=$SCRIPTS_DIR/auto-dev-runner-control.sh param1=start param2=$REPO terminal=false refresh=true size=12"
         else
-            echo "--Open runner pane | bash=$TMUX_BIN param1=new-window param2=-t param3=$SESS terminal=false size=12"
+            echo "--Open runner pane | bash=$SCRIPTS_DIR/auto-dev-attach.sh param1=$SESS terminal=false size=12"
             echo "--Stop runner | bash=$SCRIPTS_DIR/auto-dev-runner-control.sh param1=stop param2=$REPO terminal=false refresh=true size=12"
         fi
 
