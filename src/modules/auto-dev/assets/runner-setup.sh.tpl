@@ -60,17 +60,17 @@ REPO_SLUG="${REPO//\//-}"
 RUNNER_DIR="$RUNNERS_DIR/$REPO_SLUG"
 
 # ── Detect local path ──────────────────────────────────
+TEMP_CLONE=""
 if [[ -z "$LOCAL_PATH" ]]; then
   REPO_NAME="${REPO##*/}"
   LOCAL_PATH="$HOME_DIR/repos/$REPO_NAME"
 fi
 
 if [[ ! -d "$LOCAL_PATH" ]]; then
-  echo "→ Local path not found: $LOCAL_PATH"
-  echo "→ Cloning $REPO..."
-  mkdir -p "$(dirname "$LOCAL_PATH")"
-  gh repo clone "$REPO" "$LOCAL_PATH"
-  echo "  Cloned to $LOCAL_PATH"
+  TEMP_CLONE=$(mktemp -d)
+  echo "→ Repo not found locally, cloning into temp dir..."
+  gh repo clone "$REPO" "$TEMP_CLONE"
+  LOCAL_PATH="$TEMP_CLONE"
 fi
 
 echo "Setting up auto-dev for $REPO"
@@ -150,6 +150,11 @@ fi
 if [[ -n "$(git log @{u}.. 2>/dev/null)" ]]; then
   echo "→ Pushing pending commits..."
   git push
+fi
+
+# ── Cleanup temp clone ────────────────────────────────
+if [[ -n "$TEMP_CLONE" ]]; then
+  rm -rf "$TEMP_CLONE"
 fi
 
 # ── Step 6: Ensure state dir exists ───────────────────
