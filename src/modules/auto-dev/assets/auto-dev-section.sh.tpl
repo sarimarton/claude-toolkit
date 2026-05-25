@@ -157,7 +157,7 @@ if [[ -n "$MANAGED_REPOS" ]]; then
         echo "--Workflow runs | href=https://github.com/$REPO/actions/workflows/auto-dev.yml size=12"
         echo "--Repo | href=https://github.com/$REPO size=12"
         echo "-----"
-        echo "--Reinstall Auto-dev… | bash=$SCRIPTS_DIR/auto-dev-reinstall.sh param1=$REPO terminal=false refresh=false size=12 color=#888888"
+        echo "--Reinstall Auto-dev… | bash=$SCRIPTS_DIR/auto-dev-reinstall.sh param1=$REPO terminal=false refresh=false size=12"
 
     done <<< "$MANAGED_REPOS"
 fi
@@ -166,4 +166,4 @@ fi
 
 [[ -z "$MANAGED_REPOS" ]] && echo "---"
 
-echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-install.sh terminal=false refresh=false size=12 color=#888888"
+echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-install.sh terminal=false refresh=false size=12"
