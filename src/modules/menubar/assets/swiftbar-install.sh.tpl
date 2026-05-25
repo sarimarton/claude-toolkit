@@ -42,4 +42,12 @@ else
   open -a SwiftBar >/dev/null 2>&1 || true
 fi
 
+# 4. Install the watchdog LaunchAgent (keeps claude.10s.sh visible after reboot).
+WATCHDOG_PLIST="{{launch_agents_dir}}/com.sarim.swiftbar-claude-watchdog.plist"
+if [ -f "$WATCHDOG_PLIST" ]; then
+  launchctl unload "$WATCHDOG_PLIST" 2>/dev/null || true
+  launchctl load "$WATCHDOG_PLIST"
+  echo "SwiftBar watchdog LaunchAgent loaded." >&2
+fi
+
 echo "SwiftBar configured — plugins: $PLUGIN_DIR" >&2

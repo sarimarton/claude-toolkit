@@ -45,6 +45,18 @@ export const manifest: ModuleManifest = {
       filename: 'swiftbar-install.sh',
       executable: true,
     },
+    {
+      source: 'swiftbar-watchdog.sh.tpl',
+      target: 'scripts',
+      filename: 'swiftbar-watchdog.sh',
+      executable: true,
+    },
+    {
+      source: 'com.sarim.swiftbar-claude-watchdog.plist.tpl',
+      target: 'launchagents',
+      filename: 'com.sarim.swiftbar-claude-watchdog.plist',
+      executable: false,
+    },
   ],
   // Install SwiftBar.app (via brew cask) if missing, point it at the plugin dir, and launch it.
   postInstall: '{{scripts_dir}}/swiftbar-install.sh',
