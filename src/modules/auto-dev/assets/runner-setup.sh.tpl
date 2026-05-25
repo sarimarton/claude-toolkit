@@ -26,8 +26,8 @@ REPO="${1:-}"
 LOCAL_PATH="${2:-}"
 
 if [[ -z "$REPO" ]]; then
-  echo "Usage: auto-dev-runner-setup.sh <owner/repo> [local-path]"
-  exit 1
+  REPO=$(osascript -e 'text returned of (display dialog "Install auto-dev into which GitHub repo?" default answer "owner/repo" with title "Auto-dev Setup" buttons {"Cancel", "Install"} default button "Install")' 2>/dev/null)
+  [[ -z "$REPO" || "$REPO" == "owner/repo" ]] && exit 0
 fi
 
 REPO_SLUG="${REPO//\//-}"

@@ -172,6 +172,6 @@ if [[ -n "$CANDIDATE_REPOS" ]]; then
         echo "--$REPO_NAME ($REPO) | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh param1=$REPO terminal=true refresh=true size=12"
     done <<< "$CANDIDATE_REPOS"
 else
-    # Cache not ready yet — show as plain terminal launch (same as before cache populates)
-    echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh terminal=true refresh=true size=12 color=#888888"
+    # Cache not ready yet — osascript dialog will ask for repo name
+    echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh terminal=false refresh=true size=12 color=#888888"
 fi
