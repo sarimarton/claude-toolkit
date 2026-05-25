@@ -42,6 +42,12 @@ export const manifest: ModuleManifest = {
       executable: true,
     },
     {
+      source: 'auto-dev-reinstall.sh.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-reinstall.sh',
+      executable: true,
+    },
+    {
       source: 'auto-dev.yml.tpl',
       target: 'scripts',
       filename: 'auto-dev.yml',
