@@ -26,8 +26,34 @@ REPO="${1:-}"
 LOCAL_PATH="${2:-}"
 
 if [[ -z "$REPO" ]]; then
-  REPO=$(osascript -e 'text returned of (display dialog "Install auto-dev into which GitHub repo?" default answer "owner/repo" with title "Auto-dev Setup" buttons {"Cancel", "Install"} default button "Install")' 2>/dev/null)
-  [[ -z "$REPO" || "$REPO" == "owner/repo" ]] && exit 0
+  JQ={{jq}}
+  CANDIDATES_CACHE="/tmp/claude-toolkit-auto-dev-candidates.json"
+
+  # Build repo list: prefer cache, fall back to live gh call
+  if [[ -f "$CANDIDATES_CACHE" ]]; then
+    REPO_LIST=$($JQ -r '.repos[]?' "$CANDIDATES_CACHE" 2>/dev/null)
+  else
+    REPO_LIST=$(gh repo list --json nameWithOwner --limit 50 2>/dev/null \
+      | $JQ -r '.[].nameWithOwner' 2>/dev/null)
+  fi
+
+  if [[ -n "$REPO_LIST" ]]; then
+    # Build AppleScript list: {"owner/a", "owner/b", ...}
+    AS_ITEMS=$(echo "$REPO_LIST" | awk '{printf "\"%s\", ", $0}' | sed 's/, $//')
+    REPO=$(osascript <<ASEOF 2>/dev/null
+set repoList to {$AS_ITEMS}
+set chosen to choose from list repoList with prompt "Install auto-dev into which repo?" with title "Auto-dev Setup" OK button name "Install" cancel button name "Cancel"
+if chosen is false then return ""
+return item 1 of chosen
+ASEOF
+    )
+  else
+    # No repos available — fall back to text input
+    REPO=$(osascript -e 'text returned of (display dialog "Install auto-dev into which GitHub repo?" default answer "owner/repo" with title "Auto-dev Setup" buttons {"Cancel", "Install"} default button "Install")' 2>/dev/null)
+    [[ "$REPO" == "owner/repo" ]] && REPO=""
+  fi
+
+  [[ -z "$REPO" ]] && exit 0
 fi
 
 REPO_SLUG="${REPO//\//-}"
