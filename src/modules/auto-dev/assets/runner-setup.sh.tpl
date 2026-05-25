@@ -19,6 +19,7 @@ SCRIPTS_DIR="{{scripts_dir}}"
 HOME_DIR="{{home}}"
 RUNNERS_DIR="$HOME_DIR/.config/claude-toolkit/runners"
 WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev.yml"
+LABEL_WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-label.yml"
 STATE_DIR="$HOME_DIR/Documents/state/claude-toolkit/auto-dev"
 
 # ── Args ──────────────────────────────────────────────
@@ -130,21 +131,22 @@ fi
 
 echo "  Runner configured: $RUNNER_NAME"
 
-# ── Step 4: Install workflow ───────────────────────────
-echo "→ Installing workflow into $REPO..."
+# ── Step 4: Install workflows ─────────────────────────
+echo "→ Installing workflows into $REPO..."
 WORKFLOW_DIR="$LOCAL_PATH/.github/workflows"
 mkdir -p "$WORKFLOW_DIR"
 cp "$WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev.yml"
+cp "$LABEL_WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-label.yml"
 
-# ── Step 5: Commit and push workflow ──────────────────
-echo "→ Committing workflow..."
+# ── Step 5: Commit and push workflows ─────────────────
+echo "→ Committing workflows..."
 cd "$LOCAL_PATH"
-git add .github/workflows/auto-dev.yml
+git add .github/workflows/auto-dev.yml .github/workflows/auto-dev-label.yml
 if git diff --cached --quiet; then
-  echo "  Workflow already up to date, no new commit needed."
+  echo "  Workflows already up to date, no new commit needed."
 else
-  git commit -m "ci: add auto-dev workflow"
-  echo "  Workflow committed."
+  git commit -m "ci: add auto-dev workflows"
+  echo "  Workflows committed."
 fi
 echo "→ Pushing workflow..."
 git push origin HEAD

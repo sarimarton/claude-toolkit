@@ -59,6 +59,12 @@ export const manifest: ModuleManifest = {
       filename: 'auto-dev.yml',
       executable: false,
     },
+    {
+      source: 'auto-dev-label.yml.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-label.yml',
+      executable: false,
+    },
   ],
   postInstall: 'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository."',
 };

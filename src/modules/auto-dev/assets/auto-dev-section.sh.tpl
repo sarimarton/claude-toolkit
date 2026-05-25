@@ -95,9 +95,32 @@ if [[ -n "$MANAGED_REPOS" ]]; then
             *)         LAST_ICON=""  ;;
         esac
 
+        # Issue status from workflow-written summary
+        ISSUE_SUMMARY=""
+        STATUS_JSON="$STATE_DIR/${REPO_SLUG}-status.json"
+        if [[ -f "$STATUS_JSON" ]]; then
+            TOTAL=$($JQ -r '.issues.total // 0' "$STATUS_JSON" 2>/dev/null)
+            NEW=$($JQ -r '.issues.new // 0' "$STATUS_JSON" 2>/dev/null)
+            READY=$($JQ -r '.issues.ready // 0' "$STATUS_JSON" 2>/dev/null)
+            IN_PROG=$($JQ -r '.issues.in_progress // 0' "$STATUS_JSON" 2>/dev/null)
+            BLOCKED=$($JQ -r '.issues.blocked // 0' "$STATUS_JSON" 2>/dev/null)
+            PARTS=""
+            (( NEW > 0 ))     && PARTS="${PARTS}${NEW} new · "
+            (( READY > 0 ))   && PARTS="${PARTS}${READY} ready · "
+            (( IN_PROG > 0 )) && PARTS="${PARTS}${IN_PROG} in-progress · "
+            (( BLOCKED > 0 )) && PARTS="${PARTS}${BLOCKED} blocked · "
+            PARTS="${PARTS% · }"
+            [[ -n "$PARTS" ]] && ISSUE_SUMMARY="${TOTAL} issues: ${PARTS}" || ISSUE_SUMMARY="${TOTAL} issues"
+        fi
+
         TITLE="● $REPO_NAME"
         [[ -n "$LAST_ICON" && -n "$LAST_TODO" ]] && TITLE="$TITLE  $LAST_ICON $LAST_TODO"
         echo "$TITLE | size=13 color=$RUNNER_COLOR"
+
+        if [[ -n "$ISSUE_SUMMARY" ]]; then
+            echo "--$ISSUE_SUMMARY | size=12 color=#888888 href=https://github.com/$REPO/issues?q=label%3Aai"
+            echo "-----"
+        fi
 
         # Runner controls
         echo "--● Runner: $RUNNER_STATUS | color=$RUNNER_COLOR size=12"

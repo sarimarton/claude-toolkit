@@ -190,6 +190,7 @@ jobs:
           gh label create "ai:done"        --color "5319e7" --description "Auto-dev: done, review"      --force
           gh label create "ai:blocked"     --color "e4e669" --description "Auto-dev: blocked"           --force
           gh label create "ai:busy"        --color "cccccc" --description "Auto-dev: cycle running"     --force
+          gh label create "ai:epic"        --color "e99695" --description "Auto-dev: epic/kickoff"      --force
           gh label create "opus"           --color "7057ff" --description "Auto-dev: use Opus model"    --force
           gh label create "haiku"          --color "006b75" --description "Auto-dev: use Haiku model"   --force
 
@@ -219,6 +220,7 @@ jobs:
           fi
 
           if echo "$LABELS" | grep -q "ai:blocked"; then STATE="blocked"
+          elif echo "$LABELS" | grep -q "ai:epic"; then STATE="skip"
           elif echo "$LABELS" | grep -q "ai:done"; then STATE="done"
           elif echo "$LABELS" | grep -q "ai:in-progress"; then STATE="in-progress"
           elif echo "$LABELS" | grep -q "ai:ready"; then STATE="ready"
@@ -288,11 +290,14 @@ jobs:
             echo "1. Read CLAUDE.md in the repo root if it exists."
             echo "2. Find and read the files, components, and modules mentioned in the issue (use available tools)."
             echo "3. Based on what you read, decide:"
+            echo "   - Does the issue describe the overall project goal or system vision (kickoff/epic)? -> EPIC"
             echo "   - Do you have questions that can't be answered from the code? -> CLARIFY"
             echo "   - Clearly implementable based on the codebase? -> READY"
             echo "   - Too complex / risky / ambiguous intent? -> BLOCKED"
             echo ""
             echo "RULES:"
+            echo "- If the issue title/body describes the whole project purpose, a roadmap, or a vision without a concrete actionable task, choose EPIC."
+            echo "- For EPIC: identify 1-2 small, concrete first steps (Low Hanging Fruit) that can be implemented independently."
             echo "- Prefer CLARIFY over guessing. If the issue has any ambiguity, ask."
             echo "- When asking questions, include code context and your recommendation."
             echo "- Ask at most 2-3 questions, the most important ones."
@@ -300,6 +305,7 @@ jobs:
             echo "- Do NOT choose READY without reading the relevant code first."
             echo "- Output ONLY valid JSON, no other text:"
             echo ""
+            echo 'If EPIC:    {"decision": "epic", "comment": "Why this is an epic", "lhf": [{"title": "Short task title", "body": "Task description with context"}]}'
             echo 'If CLARIFY: {"decision": "clarify", "questions": "Your questions in Markdown with code references"}'
             echo 'If READY:   {"decision": "ready", "summary": "One-line issue summary", "approach": "Planned approach in 2-3 sentences with concrete file references"}'
             echo 'If BLOCKED: {"decision": "blocked", "reason": "Why you cannot proceed"}'
@@ -359,6 +365,41 @@ jobs:
           gh issue edit "$ISSUE_NUMBER" \
             --remove-label "ai:clarifying" --remove-label "ai:blocked" \
             --add-label "ai:ready" 2>/dev/null || gh issue edit "$ISSUE_NUMBER" --add-label "ai:ready"
+
+      - name: "new → handle epic"
+        if: steps.state.outputs.state == 'new' && steps.evaluate.outputs.decision == 'epic'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          COMMENT=$(jq -r '.result // . | if type == "object" then .comment else . end // "This issue describes an epic-level goal."' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+          LHF=$(jq -r '.result // . | if type == "object" then (.lhf // []) else [] end' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+
+          SUB_ISSUES=""
+          while IFS= read -r item; do
+            [[ -z "$item" ]] && continue
+            TITLE=$(echo "$item" | jq -r '.title')
+            BODY=$(echo "$item" | jq -r '.body')
+            NEW_URL=$(gh issue create --title "$TITLE" --body "$BODY" --label "ai" 2>/dev/null || true)
+            [[ -n "$NEW_URL" ]] && SUB_ISSUES="${SUB_ISSUES}"$'\n'"- ${NEW_URL}"
+          done < <(echo "$LHF" | jq -c '.[]' 2>/dev/null)
+
+          {
+            echo "🤖 **Auto-dev** — Epic detected"
+            echo ""
+            echo "$COMMENT"
+            if [[ -n "$SUB_ISSUES" ]]; then
+              echo ""
+              echo "**Created LHF sub-issues:**"
+              echo "$SUB_ISSUES"
+            fi
+            echo ""
+            echo "Continue the discussion here. New sub-issues will be picked up automatically."
+            echo ""
+            echo "<!-- auto-dev:epic -->"
+          } > "$WORK_DIR/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --body-file "$WORK_DIR/comment.md"
+          gh issue edit "$ISSUE_NUMBER" --add-label "ai:epic" 2>/dev/null || true
 
       - name: "new → mark blocked"
         if: steps.state.outputs.state == 'new' && (steps.evaluate.outputs.decision == 'blocked' || steps.evaluate.outputs.decision == 'error')
@@ -651,3 +692,31 @@ jobs:
           [[ -n "$TODO" ]]    && ENTRY=$(echo "$ENTRY" | jq --arg v "$TODO"                     '. + {todo: $v}')
           [[ -n "$PCT_AFTER" ]] && ENTRY=$(echo "$ENTRY" | jq --argjson v "$PCT_AFTER"          '. + {usage_pct_after: $v}')
           echo "$ENTRY" >> "$STATE_DIR/activity.jsonl"
+
+      - name: Update repo status summary
+        if: always() && steps.state.outputs.state != 'skip'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          STATE_DIR="$HOME/Documents/state/claude-toolkit/auto-dev"
+          REPO_SLUG=$(echo "$GH_REPO" | tr '/' '-')
+
+          ISSUE_STATES=$(gh issue list --state open --label ai --json number,labels --limit 100 2>/dev/null | jq -c '
+            {
+              total: length,
+              new:         [.[] | select(.labels | map(.name) | (any(. == "ai") and (any(startswith("ai:")) | not)))] | length,
+              clarifying:  [.[] | select(.labels | map(.name) | any(. == "ai:clarifying"))]  | length,
+              ready:       [.[] | select(.labels | map(.name) | any(. == "ai:ready"))]        | length,
+              in_progress: [.[] | select(.labels | map(.name) | any(. == "ai:in-progress"))]  | length,
+              done:        [.[] | select(.labels | map(.name) | any(. == "ai:done"))]          | length,
+              blocked:     [.[] | select(.labels | map(.name) | any(. == "ai:blocked"))]       | length,
+              epic:        [.[] | select(.labels | map(.name) | any(. == "ai:epic"))]          | length
+            }
+          ' 2>/dev/null || echo '{"total":0}')
+
+          jq -n \
+            --argjson states "$ISSUE_STATES" \
+            --argjson ts "$(date +%s)" \
+            --arg repo "$GH_REPO" \
+            '{ts: $ts, repo: $repo, issues: $states}' > "$STATE_DIR/$REPO_SLUG-status.json"
