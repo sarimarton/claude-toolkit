@@ -146,11 +146,8 @@ else
   git commit -m "ci: add auto-dev workflow"
   echo "  Workflow committed."
 fi
-# Always push: catches leftover unpushed commits from a prior failed install.
-if [[ -n "$(git log @{u}.. 2>/dev/null)" ]]; then
-  echo "→ Pushing pending commits..."
-  git push
-fi
+echo "→ Pushing workflow..."
+git push origin HEAD
 
 # ── Cleanup temp clone ────────────────────────────────
 if [[ -n "$TEMP_CLONE" ]]; then
