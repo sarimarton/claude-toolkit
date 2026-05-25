@@ -251,6 +251,45 @@ fi
 
 echo "---"
 
+# ── Update check ─────────────────────────────────────────
+
+INSTALL_DIR="{{install_dir}}"
+UPDATE_CACHE="/tmp/claude-toolkit-update-check.json"
+UPDATE_CACHE_TTL=3600  # 1 hour
+
+_check_update() {
+    local remote_sha
+    remote_sha=$(curl -sf --max-time 5 \
+        "https://api.github.com/repos/sarimarton/claude-toolkit/commits/main" \
+        2>/dev/null | grep -m1 '"sha"' | grep -oE '[0-9a-f]{40}' | head -1)
+    [[ -z "$remote_sha" ]] && return
+    local ts
+    ts=$(date +%s)
+    printf '{"sha":"%s","ts":%s}\n' "$remote_sha" "$ts" > "$UPDATE_CACHE"
+}
+
+_maybe_refresh_update_cache() {
+    local cache_age=99999
+    if [[ -f "$UPDATE_CACHE" ]]; then
+        local cache_ts
+        cache_ts=$(grep -oE '"ts":[0-9]+' "$UPDATE_CACHE" | grep -oE '[0-9]+')
+        [[ -n "$cache_ts" ]] && cache_age=$(( $(date +%s) - cache_ts ))
+    fi
+    if (( cache_age > UPDATE_CACHE_TTL )); then
+        ( _check_update ) &>/dev/null &
+    fi
+}
+
+_maybe_refresh_update_cache
+
+if [[ -f "$UPDATE_CACHE" && -d "$INSTALL_DIR/.git" ]]; then
+    remote_sha=$(grep -oE '"sha":"[0-9a-f]{40}"' "$UPDATE_CACHE" | grep -oE '[0-9a-f]{40}' | head -1)
+    local_sha=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null)
+    if [[ -n "$remote_sha" && -n "$local_sha" && "$remote_sha" != "$local_sha" ]]; then
+        echo "⬆ Update available | color=#0a84ff size=13 bash={{install_dir}}/dist/cli.js param1=update terminal=true refresh=true"
+    fi
+fi
+
 # ── Usage details ────────────────────────────────────────
 
 if [[ -n "$pct" ]]; then

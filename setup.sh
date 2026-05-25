@@ -83,6 +83,26 @@ if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
   echo "Created $CONFIG_DIR/config.yaml"
 fi
 
+# ── PATH ──────────────────────────────────────────────────
+
+# Add BIN_DIR to PATH in shell rc files if not already there
+add_to_path() {
+  local rc="$1"
+  if [ -f "$rc" ] && ! grep -q "$BIN_DIR" "$rc" 2>/dev/null; then
+    printf '\n# Added by claude-toolkit\nexport PATH="%s:$PATH"\n' "$BIN_DIR" >> "$rc"
+    echo "Added $BIN_DIR to PATH in $rc"
+  fi
+}
+
+case "$SHELL" in
+  */zsh)  add_to_path "$HOME/.zshrc" ;;
+  */bash) add_to_path "$HOME/.bashrc"; add_to_path "$HOME/.bash_profile" ;;
+  *)      add_to_path "$HOME/.profile" ;;
+esac
+
+# Also export for the current process so the TUI launch below works
+export PATH="$BIN_DIR:$PATH"
+
 # ── Done ──────────────────────────────────────────────────
 
 echo ""

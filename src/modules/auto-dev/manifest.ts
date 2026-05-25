@@ -3,7 +3,7 @@ import type { ModuleManifest } from '../../core/types.js';
 export const manifest: ModuleManifest = {
   id: 'auto-dev',
   name: 'Auto-dev',
-  description: 'GitHub Actions-based iterative development manager. Installs a self-hosted runner and workflow into target repos, then drives issue→PR→implementation cycles using Claude — respecting Pro time buckets. Adds a SwiftBar section to the Claude menu for runner control and cycle history.',
+  description: 'GitHub Actions-based iterative development manager. Installs a self-hosted runner and workflow into target repos, then drives issue→PR→implementation cycles using Claude — respecting plan tier rate limits. Adds a SwiftBar section to the Claude menu for runner control and cycle history.',
   platform: 'darwin',
   dependencies: [
     { module: 'menubar', type: 'hard' },

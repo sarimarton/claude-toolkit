@@ -13,15 +13,10 @@ This clones the repo, builds, and launches the interactive module installer. Sel
 ## Update
 
 ```bash
-claude-toolkit upgrade
+claude-toolkit update
 ```
 
-This re-renders all installed module templates from the latest source. If the repo itself needs updating:
-
-```bash
-cd ~/.local/share/claude-toolkit && git pull && npm ci && npm run build
-claude-toolkit upgrade
-```
+This pulls the latest code, rebuilds, and re-renders all installed module templates in one step.
 
 ## Uninstall
 
