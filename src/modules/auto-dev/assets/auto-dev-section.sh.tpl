@@ -1,148 +1,175 @@
 #!/usr/bin/env bash
-# auto-dev-section.sh — SwiftBar section for auto-dev module
-# Called by the main claude.10s.sh plugin via extension point.
-# Outputs SwiftBar menu items for each configured repo.
+# auto-dev-section.sh — SwiftBar top-scope section for auto-dev managed repos
+# Called by claude.10s.sh before the sessions section.
+# Managed repos: GitHub repos with the "auto-dev" topic.
+# Install submenu: repos without the topic (candidates).
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 SCRIPTS_DIR="{{scripts_dir}}"
 HOME_DIR="{{home}}"
-CONFIG_FILE="{{config_file}}"
-YQ={{yq}}
+JQ={{jq}}
 TMUX_BIN={{tmux}}
 STATE_DIR="$HOME_DIR/Documents/state/managed-iterations"
 ACTIVITY_LOG="$STATE_DIR/activity.jsonl"
-RUNNERS_DIR="$HOME_DIR/.config/claude-toolkit/runners"
 
-# ── Read configured repos from config.yaml ────────────
-REPOS=""
-if [[ -f "$CONFIG_FILE" ]]; then
-  REPOS=$($YQ -r '.autoDev.repos[]? | .github' "$CONFIG_FILE" 2>/dev/null || true)
+MANAGED_CACHE="/tmp/claude-toolkit-auto-dev-managed.json"
+CANDIDATES_CACHE="/tmp/claude-toolkit-auto-dev-candidates.json"
+CACHE_TTL=3600
+
+# ── Cache helpers ─────────────────────────────────────────
+
+_cache_age() {
+    local f="$1"
+    [[ ! -f "$f" ]] && { echo 99999; return; }
+    local ts
+    ts=$(grep -oE '"ts":[0-9]+' "$f" | grep -oE '[0-9]+')
+    [[ -z "$ts" ]] && { echo 99999; return; }
+    echo $(( $(date +%s) - ts ))
+}
+
+_refresh_repos() {
+    local all ts managed candidates
+    all=$(gh repo list --json nameWithOwner,repositoryTopics --limit 50 2>/dev/null)
+    [[ -z "$all" ]] && return
+    ts=$(date +%s)
+    managed=$(echo "$all" | $JQ -r \
+        '[.[] | select(.repositoryTopics | map(.name) | contains(["auto-dev"])) | .nameWithOwner]' \
+        2>/dev/null)
+    candidates=$(echo "$all" | $JQ -r \
+        '[.[] | select(.repositoryTopics | map(.name) | contains(["auto-dev"]) | not) | .nameWithOwner]' \
+        2>/dev/null)
+    [[ -z "$managed" || -z "$candidates" ]] && return
+    printf '{"repos":%s,"ts":%s}\n' "$managed" "$ts" > "$MANAGED_CACHE"
+    printf '{"repos":%s,"ts":%s}\n' "$candidates" "$ts" > "$CANDIDATES_CACHE"
+}
+
+if (( $(_cache_age "$MANAGED_CACHE") > CACHE_TTL )); then
+    ( _refresh_repos ) &>/dev/null &
 fi
 
-[[ -z "$REPOS" ]] && exit 0
+# ── Read data ─────────────────────────────────────────────
 
-# ── Ansi helpers (match main plugin style) ────────────
-A_DIM=$'\e[2m'; A_RST=$'\e[0m'; A_BOLD=$'\e[1m'
+MANAGED_REPOS=""
+[[ -f "$MANAGED_CACHE" ]] && MANAGED_REPOS=$($JQ -r '.repos[]?' "$MANAGED_CACHE" 2>/dev/null)
 
-# ── Section separator + header ────────────────────────
-echo "---"
-echo "Auto-dev | size=11 color=#888888"
+CANDIDATE_REPOS=""
+[[ -f "$CANDIDATES_CACHE" ]] && CANDIDATE_REPOS=$($JQ -r '.repos[]?' "$CANDIDATES_CACHE" 2>/dev/null)
 
-# ── Per-repo submenu ──────────────────────────────────
-while IFS= read -r REPO; do
-  [[ -z "$REPO" ]] && continue
+[[ -z "$MANAGED_REPOS" && -z "$CANDIDATE_REPOS" ]] && exit 0
 
-  REPO_SLUG="${REPO//\//-}"
-  SESS="auto-dev-$REPO_SLUG"
-  REPO_NAME="${REPO##*/}"
+# ── Managed repos (top-scope) ─────────────────────────────
 
-  # Runner status
-  if $TMUX_BIN has-session -t "$SESS" 2>/dev/null; then
-    RUNNER_STATUS="●"
-    RUNNER_COLOR="#30d158"  # green
-    RUNNER_STATUS_TEXT="running"
-  else
-    RUNNER_STATUS="●"
-    RUNNER_COLOR="#ff453a"  # red
-    RUNNER_STATUS_TEXT="stopped"
-  fi
+if [[ -n "$MANAGED_REPOS" ]]; then
+    echo "---"
 
-  # Last activity for this repo
-  LAST_OUTCOME=""
-  if [[ -f "$ACTIVITY_LOG" ]]; then
-    LAST_ENTRY=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -1)
-    if [[ -n "$LAST_ENTRY" ]]; then
-      LAST_OUTCOME=$(echo "$LAST_ENTRY" | jq -r '.outcome // ""' 2>/dev/null)
-      LAST_TODO=$(echo "$LAST_ENTRY" | jq -r '.todo // ""' 2>/dev/null | cut -c1-40)
-      LAST_TS=$(echo "$LAST_ENTRY" | jq -r '.ts // 0' 2>/dev/null)
-      NOW=$(date +%s)
-      AGE_MIN=$(( (NOW - LAST_TS) / 60 ))
-      if (( AGE_MIN < 60 )); then
-        AGE_STR="${AGE_MIN}m ago"
-      elif (( AGE_MIN < 1440 )); then
-        AGE_STR="$(( AGE_MIN / 60 ))h ago"
-      else
-        AGE_STR="$(( AGE_MIN / 1440 ))d ago"
-      fi
-    fi
-  fi
+    while IFS= read -r REPO; do
+        [[ -z "$REPO" ]] && continue
 
-  # Submenu header line
-  echo "${REPO_NAME} | size=13"
+        REPO_SLUG="${REPO//\//-}"
+        SESS="auto-dev-$REPO_SLUG"
+        REPO_NAME="${REPO##*/}"
 
-  # Runner status + controls
-  echo "--${RUNNER_STATUS} Runner: ${RUNNER_STATUS_TEXT} | color=${RUNNER_COLOR} size=12"
+        # Runner status
+        if $TMUX_BIN has-session -t "$SESS" 2>/dev/null; then
+            RUNNER_STATUS="running"
+            RUNNER_COLOR="#30d158"
+        else
+            RUNNER_STATUS="stopped"
+            RUNNER_COLOR="#ff453a"
+        fi
 
-  if [[ "$RUNNER_STATUS_TEXT" == "stopped" ]]; then
-    echo "--Start runner | bash=$SCRIPTS_DIR/auto-dev-runner-control.sh param1=start param2=$REPO terminal=false refresh=true size=12"
-  else
-    echo "--Open runner pane | bash=$TMUX_BIN param1=new-window param2=-t param3=$SESS terminal=false refresh=false size=12"
-    echo "--Stop runner | bash=$SCRIPTS_DIR/auto-dev-runner-control.sh param1=stop param2=$REPO terminal=false refresh=true size=12"
-  fi
+        # Last activity
+        LAST_OUTCOME="" LAST_TODO=""
+        if [[ -f "$ACTIVITY_LOG" ]]; then
+            LAST_ENTRY=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -1)
+            if [[ -n "$LAST_ENTRY" ]]; then
+                LAST_OUTCOME=$($JQ -r '.outcome // ""' 2>/dev/null <<< "$LAST_ENTRY")
+                LAST_TODO=$($JQ -r '.todo // ""' 2>/dev/null <<< "$LAST_ENTRY" | cut -c1-30)
+            fi
+        fi
 
-  echo "-----"
-
-  # Last 5 activity log entries for this repo
-  if [[ -f "$ACTIVITY_LOG" ]]; then
-    ENTRIES=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -5 | tac)
-    if [[ -n "$ENTRIES" ]]; then
-      echo "--Recent cycles | size=11 color=#888888"
-      while IFS= read -r ENTRY; do
-        [[ -z "$ENTRY" ]] && continue
-        OUTCOME=$(echo "$ENTRY" | jq -r '.outcome // "?"' 2>/dev/null)
-        TODO=$(echo "$ENTRY" | jq -r '.todo // ""' 2>/dev/null | cut -c1-35)
-        ENTRY_TS=$(echo "$ENTRY" | jq -r '.ts // 0' 2>/dev/null)
-        MODEL=$(echo "$ENTRY" | jq -r '.model // ""' 2>/dev/null | sed 's/claude-//' | sed 's/-[0-9].*//')
-        PR_REF=$(echo "$ENTRY" | jq -r '.pr // ""' 2>/dev/null)
-
-        case "$OUTCOME" in
-          completed) ICON="✓"; COLOR="#30d158" ;;
-          blocked)   ICON="⊘"; COLOR="#ff9f0a" ;;
-          question)  ICON="?"; COLOR="#0a84ff" ;;
-          crash)     ICON="✗"; COLOR="#ff453a" ;;
-          *)         ICON="·"; COLOR="#888888" ;;
+        case "$LAST_OUTCOME" in
+            completed) LAST_ICON="✓" ;;
+            blocked)   LAST_ICON="⊘" ;;
+            question)  LAST_ICON="?" ;;
+            crash)     LAST_ICON="✗" ;;
+            *)         LAST_ICON=""  ;;
         esac
 
-        ENTRY_AGE_MIN=$(( ($(date +%s) - ENTRY_TS) / 60 ))
-        if (( ENTRY_AGE_MIN < 60 )); then
-          ENTRY_AGE="${ENTRY_AGE_MIN}m"
-        elif (( ENTRY_AGE_MIN < 1440 )); then
-          ENTRY_AGE="$(( ENTRY_AGE_MIN / 60 ))h"
+        TITLE="$REPO_NAME"
+        [[ -n "$LAST_ICON" && -n "$LAST_TODO" ]] && TITLE="$TITLE  $LAST_ICON $LAST_TODO"
+        echo "$TITLE | size=13"
+
+        # Runner controls
+        echo "--● Runner: $RUNNER_STATUS | color=$RUNNER_COLOR size=12"
+        if [[ "$RUNNER_STATUS" == "stopped" ]]; then
+            echo "--Start runner | bash=$SCRIPTS_DIR/auto-dev-runner-control.sh param1=start param2=$REPO terminal=false refresh=true size=12"
         else
-          ENTRY_AGE="$(( ENTRY_AGE_MIN / 1440 ))d"
+            echo "--Open runner pane | bash=$TMUX_BIN param1=new-window param2=-t param3=$SESS terminal=false size=12"
+            echo "--Stop runner | bash=$SCRIPTS_DIR/auto-dev-runner-control.sh param1=stop param2=$REPO terminal=false refresh=true size=12"
         fi
 
-        DISPLAY="${ICON} ${ENTRY_AGE} ${TODO:-(no todo)}"
-        [[ -n "$MODEL" ]] && DISPLAY="$DISPLAY [$MODEL]"
+        echo "-----"
 
-        if [[ -n "$PR_REF" ]]; then
-          PR_NUM="${PR_REF##*#}"
-          PR_URL="https://github.com/$REPO/pull/$PR_NUM"
-          echo "--${DISPLAY} | color=${COLOR} size=12 href=$PR_URL"
-        else
-          echo "--${DISPLAY} | color=${COLOR} size=12"
+        # Recent cycles
+        if [[ -f "$ACTIVITY_LOG" ]]; then
+            ENTRIES=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -5 | tac)
+            if [[ -n "$ENTRIES" ]]; then
+                echo "--Recent cycles | size=11 color=#888888"
+                while IFS= read -r ENTRY; do
+                    [[ -z "$ENTRY" ]] && continue
+                    OUTCOME=$($JQ -r '.outcome // "?"' 2>/dev/null <<< "$ENTRY")
+                    TODO=$($JQ -r '.todo // ""' 2>/dev/null <<< "$ENTRY" | cut -c1-35)
+                    ENTRY_TS=$($JQ -r '.ts // 0' 2>/dev/null <<< "$ENTRY")
+                    MODEL=$($JQ -r '.model // ""' 2>/dev/null <<< "$ENTRY" | sed 's/claude-//' | sed 's/-[0-9].*//')
+                    PR_REF=$($JQ -r '.pr // ""' 2>/dev/null <<< "$ENTRY")
+
+                    case "$OUTCOME" in
+                        completed) ICON="✓"; COLOR="#30d158" ;;
+                        blocked)   ICON="⊘"; COLOR="#ff9f0a" ;;
+                        question)  ICON="?"; COLOR="#0a84ff" ;;
+                        crash)     ICON="✗"; COLOR="#ff453a" ;;
+                        *)         ICON="·"; COLOR="#888888" ;;
+                    esac
+
+                    AGE_MIN=$(( ($(date +%s) - ENTRY_TS) / 60 ))
+                    if   (( AGE_MIN < 60 ));   then AGE="${AGE_MIN}m"
+                    elif (( AGE_MIN < 1440 )); then AGE="$(( AGE_MIN / 60 ))h"
+                    else                            AGE="$(( AGE_MIN / 1440 ))d"
+                    fi
+
+                    DISPLAY="$ICON $AGE ${TODO:-(no todo)}"
+                    [[ -n "$MODEL" ]] && DISPLAY="$DISPLAY [$MODEL]"
+
+                    if [[ -n "$PR_REF" ]]; then
+                        PR_URL="https://github.com/$REPO/pull/${PR_REF##*#}"
+                        echo "--$DISPLAY | color=$COLOR size=12 href=$PR_URL"
+                    else
+                        echo "--$DISPLAY | color=$COLOR size=12"
+                    fi
+                done <<< "$ENTRIES"
+            else
+                echo "--No cycles yet | size=12 color=#888888"
+            fi
         fi
-      done <<< "$ENTRIES"
-    else
-      echo "--No cycles yet | size=12 color=#888888"
-    fi
-  else
-    echo "--No activity log yet | size=12 color=#888888"
-  fi
 
-  echo "-----"
+        echo "-----"
+        echo "--Issues | href=https://github.com/$REPO/issues?q=label%3Aai size=12"
+        echo "--Workflow runs | href=https://github.com/$REPO/actions/workflows/auto-dev.yml size=12"
+        echo "--Repo | href=https://github.com/$REPO size=12"
 
-  # Config and repo links
-  REPO_URL="https://github.com/$REPO"
-  ISSUES_URL="https://github.com/$REPO/issues?q=label%3Aai"
-  ACTIONS_URL="https://github.com/$REPO/actions/workflows/auto-dev.yml"
+    done <<< "$MANAGED_REPOS"
+fi
 
-  echo "--Open issues | href=$ISSUES_URL size=12"
-  echo "--Workflow runs | href=$ACTIONS_URL size=12"
-  echo "--Repo on GitHub | href=$REPO_URL size=12"
+# ── Install submenu ───────────────────────────────────────
 
-done <<< "$REPOS"
-
-# ── Install to new repo ───────────────────────────────
-echo "Install auto-dev in another repo… | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh terminal=true size=12 color=#888888"
+if [[ -n "$CANDIDATE_REPOS" ]]; then
+    [[ -z "$MANAGED_REPOS" ]] && echo "---"
+    echo "Install Auto-dev to repo… | size=12 color=#888888"
+    while IFS= read -r REPO; do
+        [[ -z "$REPO" ]] && continue
+        REPO_NAME="${REPO##*/}"
+        echo "--$REPO_NAME ($REPO) | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh param1=$REPO terminal=true refresh=true size=12"
+    done <<< "$CANDIDATE_REPOS"
+fi

@@ -123,6 +123,14 @@ fi
 # ── Step 6: Ensure state dir exists ───────────────────
 mkdir -p "$STATE_DIR"
 
+# ── Step 7: Tag repo with auto-dev topic ──────────────
+echo "→ Adding 'auto-dev' topic to $REPO..."
+if gh repo edit "$REPO" --add-topic auto-dev 2>/dev/null; then
+  echo "  Topic added. The repo will appear in the Claude menu on next refresh."
+else
+  echo "  Warning: could not add topic (non-fatal)."
+fi
+
 # ── Done ──────────────────────────────────────────────
 echo ""
 echo "✓ Setup complete for $REPO"
