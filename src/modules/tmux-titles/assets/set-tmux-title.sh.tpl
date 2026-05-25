@@ -30,10 +30,15 @@ if [[ -n "$marker" ]]; then
             printf '{"topic":"%s","ts":%d}\n' "$topic" "$(date +%s)" > "$tmp"
             mv -f "$tmp" "$target"
 
-            # Append to JSONL log for model/quality analysis
+            # Per-session turn counter (incremented once per Stop hook fire)
             log_dir="$(dirname "$TOPICS_DIR")"
-            printf '{"ts":%d,"session":"%s","topic":"%s","m":"%s","pct":%s,"q":"%s"}\n' \
-                "$(date +%s)" "$session" "$topic" \
+            counter_file="$TOPICS_DIR/.${session}.turn"
+            turn=$(( $(cat "$counter_file" 2>/dev/null || echo 0) + 1 ))
+            echo "$turn" > "$counter_file"
+
+            # Append to JSONL log for model/quality analysis
+            printf '{"ts":%d,"session":"%s","turn":%d,"topic":"%s","m":"%s","pct":%s,"q":"%s"}\n' \
+                "$(date +%s)" "$session" "$turn" "$topic" \
                 "${model:-?}" "${pct:--1}" "${quality:-?}" \
                 >> "$log_dir/marker-log.jsonl"
         fi
