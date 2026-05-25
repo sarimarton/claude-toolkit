@@ -15,14 +15,26 @@ if [[ -n "$marker" ]]; then
     if [[ -n "$topic" ]]; then
         {{tmux}} rename-window "✻ $topic" 2>/dev/null
 
-        # Write JSON for VS Code extension (atomic write via temp+mv)
+        model=$(echo "$marker" | sed -n 's/.*\$m:[[:space:]]*\([soh]\).*/\1/p')
+        pct=$(echo "$marker" | sed -n 's/.*\$pct:[[:space:]]*\([0-9]*\).*/\1/p')
+        quality=$(echo "$marker" | sed -n 's/.*\$q:[[:space:]]*\([+?-]\).*/\1/p')
+
         session=$({{tmux}} display-message -p '#{session_name}' 2>/dev/null)
         if [[ -n "$session" ]]; then
             mkdir -p "$TOPICS_DIR"
+
+            # Write JSON for VS Code extension (atomic write via temp+mv)
             tmp="$TOPICS_DIR/.${session}.tmp"
             target="$TOPICS_DIR/${session}.json"
             printf '{"topic":"%s","ts":%d}\n' "$topic" "$(date +%s)" > "$tmp"
             mv -f "$tmp" "$target"
+
+            # Append to JSONL log for model/quality analysis
+            log_dir="$(dirname "$TOPICS_DIR")"
+            printf '{"ts":%d,"session":"%s","topic":"%s","m":"%s","pct":%s,"q":"%s"}\n' \
+                "$(date +%s)" "$session" "$topic" \
+                "${model:-?}" "${pct:--1}" "${quality:-?}" \
+                >> "$log_dir/marker-log.jsonl"
         fi
     fi
 fi

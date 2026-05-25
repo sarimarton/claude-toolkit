@@ -380,7 +380,7 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
     comp_text=""
     if [[ -n "$topic_line" ]]; then
         topic_text=$(echo "$topic_line" | sed -n 's/.*\$topic:[[:space:]]*\([^|]*\).*/\1/p' | sed 's/[[:space:]]*$//')
-        comp_text=$(echo "$topic_line" | sed -n 's/.*\$completeness:[[:space:]]*\([0-9]*\).*/\1/p')
+        comp_text=$(echo "$topic_line" | sed -n 's/.*\$pct:[[:space:]]*\([0-9]*\).*/\1/p')
     fi
 
     # Peek: AI-generated summary cached in /tmp, regenerated when buffer changes
@@ -406,11 +406,6 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
     if $regen && [[ -f "$peek_hash_file" ]]; then
         last_gen=$(stat -f %m "$peek_hash_file" 2>/dev/null || echo 0)
         (( $(date +%s) - last_gen < 120 )) && regen=false
-    fi
-    # State-aware: skip during active streaming (only generate for waiting/done)
-    state_text=$(echo "$topic_line" | sed -n 's/.*\$state:[[:space:]]*\([a-z]*\).*/\1/p')
-    if [[ -n "$state_text" && "$state_text" != "waiting" && "$state_text" != "done" ]]; then
-        regen=false
     fi
 
     if [[ "$buf_hash" != "$old_hash" && -n "$buf_tail" && "$regen" == true && "$peek_slot_available" == true ]]; then

@@ -173,6 +173,55 @@ if not all_accounts:
     print("<html><body style='background:#1a1a2e;color:#e0e0e0;padding:40px;font-family:system-ui'><h1>No valid data</h1></body></html>")
     sys.exit(0)
 
+# ── Marker log analysis (global, not per-account) ───────
+marker_log_path = os.path.expanduser("~/.config/claude-toolkit/marker-log.jsonl")
+marker_entries = []
+if os.path.exists(marker_log_path):
+    with open(marker_log_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try: marker_entries.append(json.loads(line))
+            except Exception: continue
+
+model_labels = {"s": "Sonnet", "o": "Opus", "h": "Haiku"}
+model_counts = defaultdict(int)
+model_quality = defaultdict(lambda: {"+": 0, "-": 0, "?": 0})
+
+for entry in marker_entries:
+    m = entry.get("m", "?")
+    q = entry.get("q", "?")
+    if m in model_labels:
+        model_counts[m] += 1
+        if q in ("+", "-", "?"):
+            model_quality[m][q] += 1
+
+total_turns = len(marker_entries)
+total_pos = sum(model_quality[m]["+"] for m in model_quality)
+total_neg = sum(model_quality[m]["-"] for m in model_quality)
+total_rated = total_pos + total_neg
+overall_sat = round(total_pos / total_rated * 100, 1) if total_rated > 0 else None
+
+model_stats = []
+for code in ("s", "o", "h"):
+    total = model_counts[code]
+    if total == 0: continue
+    pos = model_quality[code]["+"]
+    neg = model_quality[code]["-"]
+    unk = model_quality[code]["?"]
+    rated = pos + neg
+    model_stats.append({
+        "code": code, "label": model_labels[code], "total": total,
+        "pos": pos, "neg": neg, "unk": unk,
+        "satPct": round(pos / rated * 100, 1) if rated > 0 else None,
+    })
+
+marker_result = {
+    "totalTurns": total_turns,
+    "overallSat": overall_sat,
+    "modelStats": model_stats,
+}
+
 gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 multi = len(account_names) > 1
 
@@ -180,6 +229,7 @@ DATA_JSON = json.dumps({
     "accounts": all_accounts,
     "accountNames": account_names,
     "multi": multi,
+    "markerData": marker_result,
 }, separators=(",", ":"))
 
 HTML = r"""<!DOCTYPE html>
@@ -278,6 +328,13 @@ HTML = r"""<!DOCTYPE html>
     <strong>Sub effective</strong> = plan cost &times; avg weekly utilization.<br>
     <strong>API equiv</strong> = sum of session % consumed &times; estimated $/1% rate.
   </p>
+</div>
+
+<div class="chart-container" id="markerSection">
+  <h2>Model &amp; Quality Analysis</h2>
+  <p class="desc">Turn-level data from <code>marker-log.jsonl</code>. Satisfaction = current turn rates the previous inference (+&nbsp;correct,&nbsp;-&nbsp;corrected,&nbsp;?&nbsp;first-turn).</p>
+  <div class="stats" id="markerStats" style="margin-bottom:16px;"></div>
+  <canvas id="markerChart" style="max-height:280px;"></canvas>
 </div>
 
 <div class="chart-container">
@@ -504,6 +561,55 @@ function rebuildCharts(name) {
   drawHeatmap(a);
 }
 
+// ── Marker section (global, rendered once) ────────────
+function buildMarkerSection() {
+  var md = _D.markerData;
+  if (!md || md.totalTurns === 0) {
+    document.getElementById('markerSection').style.display = 'none';
+    return;
+  }
+  var satStr = md.overallSat != null ? md.overallSat + '%' : 'N/A';
+  var topModel = md.modelStats.length > 0
+    ? md.modelStats.reduce(function(a,b) { return a.total > b.total ? a : b; }).label
+    : 'N/A';
+  document.getElementById('markerStats').innerHTML =
+    '<div class="stat-card"><div class="stat-value">' + md.totalTurns + '</div><div class="stat-label">Logged turns</div></div>' +
+    '<div class="stat-card"><div class="stat-value">' + satStr + '</div><div class="stat-label">Satisfaction rate</div></div>' +
+    '<div class="stat-card"><div class="stat-value">' + topModel + '</div><div class="stat-label">Most used model</div></div>';
+
+  if (md.modelStats.length === 0) return;
+  var labels = md.modelStats.map(function(s) { return s.label; });
+  var posData = md.modelStats.map(function(s) { return s.pos; });
+  var negData = md.modelStats.map(function(s) { return s.neg; });
+  var unkData = md.modelStats.map(function(s) { return s.unk; });
+  new Chart(document.getElementById('markerChart'), {
+    type: 'bar',
+    data: { labels: labels, datasets: [
+      { label: '+ satisfied', data: posData, backgroundColor: 'rgba(51, 187, 51, 0.8)' },
+      { label: '- corrected', data: negData, backgroundColor: 'rgba(230, 70, 70, 0.8)' },
+      { label: '? first-turn', data: unkData, backgroundColor: 'rgba(120, 120, 120, 0.45)' },
+    ]},
+    options: {
+      responsive: true, animation: false,
+      plugins: {
+        legend: { display: true, labels: { color: '#888' } },
+        tooltip: { callbacks: { label: function(item) {
+          var s = md.modelStats[item.dataIndex];
+          var rated = s.pos + s.neg;
+          var sat = rated > 0 ? Math.round(s.pos / rated * 100) + '%' : 'N/A';
+          if (item.datasetIndex === 0) return '+ satisfied: ' + item.parsed.y + '  (sat rate: ' + sat + ')';
+          if (item.datasetIndex === 1) return '- corrected: ' + item.parsed.y;
+          return '? first-turn: ' + item.parsed.y;
+        }}}
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: '#666' }, grid: { color: '#2a2a4a' } },
+        y: { stacked: true, title: { display: true, text: 'Turns', color: '#888' }, ticks: { color: '#666' }, grid: { color: '#2a2a4a' } }
+      }
+    }
+  });
+}
+
 // ── Account switching ──────────────────────────────────
 function switchAccount(idx) {
   currentIdx = idx;
@@ -539,6 +645,7 @@ document.addEventListener('keydown', function(e) {
 // Initial render
 rebuildCharts(names[0]);
 updateBadge();
+buildMarkerSection();
 </script>
 </body>
 </html>"""

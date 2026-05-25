@@ -3,7 +3,7 @@ import type { ModuleManifest } from '../../core/types.js';
 export const manifest: ModuleManifest = {
   id: 'topic-markers',
   name: 'Topic Markers',
-  description: 'Adds structured ($topic: | $completeness: | $state:) markers to every Claude response via UserPromptSubmit hook',
+  description: 'Adds structured ($topic: | $m: | $pct: | $q:) markers to every Claude response via UserPromptSubmit hook',
   platform: 'any',
   dependencies: [],
   externals: [

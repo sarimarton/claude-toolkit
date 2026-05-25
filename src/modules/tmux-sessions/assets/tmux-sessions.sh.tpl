@@ -47,7 +47,7 @@ pane_id; process; dir; topic; completeness; state
 - state: waiting, done, or idle
 
 How to fill topic, completeness, and state:
-- MARKER: has (\$topic: X | \$completeness: N | \$state: S) → use X, N, S directly
+- MARKER: has (\$topic: X | \$m: M | \$pct: N | \$q: Q) → use X for topic, N for completeness, reconstruct state from context
 - MARKER: has (\$topic: X) only → use X for topic, reconstruct completeness/state from VISIBLE
 - [claude] with no marker AND no conversation visible (startup UI, permission dialog, empty prompt) → topic = "üres session", completeness = "-", state = "idle"
 - [claude] with no marker BUT has conversation visible → reconstruct topic/state from VISIBLE, completeness = "-"

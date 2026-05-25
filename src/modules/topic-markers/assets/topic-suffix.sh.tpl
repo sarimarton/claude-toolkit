@@ -42,7 +42,7 @@ cat <<'EOF'
 FONTOS: Minden válaszod legvégére tegyél egy üres sort, majd EGY sorban
 a session markerét a lenti formátumban.
 
-Formátum: ($topic: <téma 5-10 szóban> | $completeness: <0-100> | $state: <waiting|done|idle>)
+Formátum: ($topic: <téma 5-10 szóban> | $m: <s|o|h> | $pct: <0-100> | $q: <+|-|?>)
 
 $topic — a session FŐ CÉLJA, a session nyelvén. NEM az aktuális lépés vagy
   a legutóbbi részfeladat, hanem a nagyobb szándék, ami köré az egész munka szerveződik.
@@ -62,16 +62,21 @@ $topic — a session FŐ CÉLJA, a session nyelvén. NEM az aktuális lépés va
   CSAK AKKOR váltson a topic, ha a user érdemben új, önálló főcélt indít, ami
   egyértelműen más területre vezet (másik feature, másik probléma, másik kódrész).
 
-$completeness — a feladat haladása 0-100 között.
+$m — az aktuális session modellje (rövid kód):
+  - "s" — Sonnet
+  - "o" — Opus
+  - "h" — Haiku
+
+$pct — a feladat haladása 0-100 között.
   Becsüld a teljes beszélgetés alapján, beleértve:
   - A user tónusát (elégedettség, kérdezősség, megerősítés)
   - A session dinamikáját (tervezés=10-30, implementáció=40-70, tesztelés/finalizálás=70-95, kész=100)
-  - Ha scope change történt, a completeness az új scope-hoz viszonyítson.
+  - Ha scope change történt, a pct az új scope-hoz viszonyítson.
 
-$state — mire vár a session:
-  - "waiting" — user inputra/action-re vár (alapértelmezés)
-  - "done" — feladat kész, session zárható (completeness=100)
-  - "idle" — nincs aktív feladat
+$q — az előző válasz minősége (a JELENLEGI turn értékeli az ELŐZŐ infert):
+  - "+" — az előző infer helyes és hasznos volt
+  - "-" — az előző infer hibás, hiányos, vagy javítást igényelt (user korrigált, újrakért)
+  - "?" — első turn, nincs értékelhető előző infer
 
 KIVÉTEL — NE tedd rá a markert, ha a user prompt bármelyikre igaz:
 - Strukturált/gépi output-ot kér (JSON, CSV, YAML, XML, changelog, stb.)
