@@ -343,11 +343,6 @@ else
     echo "No data yet | color=#888888"
 fi
 
-# ── Optional module extensions (pre-sessions) ────────────
-if [[ -f "$HELPERS/auto-dev-section.sh" ]]; then
-  bash "$HELPERS/auto-dev-section.sh"
-fi
-
 # ── Sessions ─────────────────────────────────────────────
 
 echo "---"
@@ -514,6 +509,11 @@ if $MULTI_ACCOUNT; then
             echo "${acct}: no data | color=#888888 size=12"
         fi
     done <<< "$ALL_ACCOUNTS"
+fi
+
+# ── Optional module extensions (post-sessions) ───────────
+if [[ -f "$HELPERS/auto-dev-section.sh" ]]; then
+  bash "$HELPERS/auto-dev-section.sh"
 fi
 
 # ── Controls ─────────────────────────────────────────────

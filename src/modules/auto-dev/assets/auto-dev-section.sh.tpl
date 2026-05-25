@@ -160,18 +160,8 @@ if [[ -n "$MANAGED_REPOS" ]]; then
     done <<< "$MANAGED_REPOS"
 fi
 
-# ── Install submenu ───────────────────────────────────────
+# ── Install button ────────────────────────────────────────
 
 [[ -z "$MANAGED_REPOS" ]] && echo "---"
 
-if [[ -n "$CANDIDATE_REPOS" ]]; then
-    echo "Install Auto-dev to repo… | size=12 color=#888888"
-    while IFS= read -r REPO; do
-        [[ -z "$REPO" ]] && continue
-        REPO_NAME="${REPO##*/}"
-        echo "--$REPO_NAME ($REPO) | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh param1=$REPO terminal=true refresh=true size=12"
-    done <<< "$CANDIDATE_REPOS"
-else
-    # Cache not ready yet — osascript dialog will ask for repo name
-    echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh terminal=false refresh=true size=12 color=#888888"
-fi
+echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-install.sh terminal=false refresh=false size=12 color=#888888"
