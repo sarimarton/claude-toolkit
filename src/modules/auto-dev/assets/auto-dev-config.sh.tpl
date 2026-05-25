@@ -1,78 +1,120 @@
 #!/usr/bin/env bash
-# auto-dev-config.sh — Edit per-repo auto-dev config via AppleScript form.
+# auto-dev-config.sh — Edit per-repo auto-dev config via gum TUI.
 # Config is stored as JSON in a GitHub Actions repo variable: AUTO_DEV_CONFIG
 export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 REPO="$1"
 [[ -z "$REPO" ]] && exit 0
 
+# ── If not in a terminal, relaunch self in Terminal.app ───────
+if [ ! -t 0 ]; then
+  SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  osascript \
+    -e 'tell application "Terminal"' \
+    -e '  activate' \
+    -e "  do script \"'$SELF' '$REPO'; echo ''; read -p 'Press Enter to close...'\"" \
+    -e 'end tell'
+  exit 0
+fi
+
 JQ={{jq}}
+
+# ── Ensure gum is installed ───────────────────────────────────
+if ! command -v gum &>/dev/null; then
+  echo "Installing gum..."
+  brew install gum
+fi
 
 # ── Read current config ───────────────────────────────────────
 RAW=$(gh api "repos/$REPO/actions/variables/AUTO_DEV_CONFIG" --jq '.value' 2>/dev/null || echo '{}')
 CONFIG=$(echo "$RAW" | $JQ -c '.' 2>/dev/null || echo '{}')
+CURRENT_PRESET=$(echo "$CONFIG" | $JQ -r '.preset // "high"')
 
-CI=$(echo "$CONFIG" | $JQ -r '.create_issues    // true')
-CP=$(echo "$CONFIG" | $JQ -r '.create_prs       // true')
-PC=$(echo "$CONFIG" | $JQ -r '.push_commits     // true')
-MI=$(echo "$CONFIG" | $JQ -r '.max_issues_per_run // 3')
+# ── Header ────────────────────────────────────────────────────
+echo ""
+gum style \
+  --border rounded --border-foreground 212 \
+  --padding "0 2" --bold \
+  "Auto-dev Config: $REPO"
+echo ""
 
-# ── AppleScript form (sequential dialogs) ────────────────────
-RESULT=$(osascript <<ASEOF 2>/dev/null
--- create_issues
-set ciList to {"true", "false"}
-set ciResult to choose from list ciList with prompt "create_issues — Can Claude open sub-issues automatically?" with title "Auto-dev Config: $REPO" default items {"$CI"}
-if ciResult is false then return "cancelled"
-set ciVal to item 1 of ciResult
+# ── Preset selection ──────────────────────────────────────────
+PRESET=$(gum choose \
+  --header "Autonomy preset:" \
+  --selected "$CURRENT_PRESET" \
+  "high" "low" "custom")
+[[ -z "$PRESET" ]] && exit 0
 
--- create_prs
-set cpList to {"true", "false"}
-set cpResult to choose from list cpList with prompt "create_prs — Can Claude open draft PRs automatically?" with title "Auto-dev Config: $REPO" default items {"$CP"}
-if cpResult is false then return "cancelled"
-set cpVal to item 1 of cpResult
+case "$PRESET" in
+  high)
+    # Fully autonomous: creates issues, PRs, pushes commits
+    NEW_CI=true; NEW_CP=true; NEW_PC=true; NEW_MI=3
+    ;;
+  low)
+    # Conservative: evaluates and comments, but no PRs or pushes without human approval
+    NEW_CI=true; NEW_CP=false; NEW_PC=false; NEW_MI=1
+    ;;
+  custom)
+    CURR_CI=$(echo "$CONFIG" | $JQ -r '.create_issues     // true')
+    CURR_CP=$(echo "$CONFIG" | $JQ -r '.create_prs        // true')
+    CURR_PC=$(echo "$CONFIG" | $JQ -r '.push_commits      // true')
+    CURR_MI=$(echo "$CONFIG" | $JQ -r '.max_issues_per_run // 3')
 
--- push_commits
-set pcList to {"true", "false"}
-set pcResult to choose from list pcList with prompt "push_commits — Can Claude push commits automatically?" with title "Auto-dev Config: $REPO" default items {"$PC"}
-if pcResult is false then return "cancelled"
-set pcVal to item 1 of pcResult
+    echo ""
+    gum style --bold "Custom settings:"
+    echo ""
 
--- max_issues_per_run
-set miResult to display dialog "max_issues_per_run — Max issues to process per scheduled run:" default answer "$MI" with title "Auto-dev Config: $REPO" buttons {"Cancel", "Save"} default button "Save" cancel button "Cancel"
-set miVal to text returned of miResult
+    gum style "create_issues — Can Claude open sub-issues automatically?"
+    NEW_CI=$(gum choose --selected "$CURR_CI" "true" "false")
+    [[ -z "$NEW_CI" ]] && exit 0
 
-return ciVal & "|" & cpVal & "|" & pcVal & "|" & miVal
-ASEOF
-)
+    echo ""
+    gum style "create_prs — Can Claude open draft PRs automatically?"
+    NEW_CP=$(gum choose --selected "$CURR_CP" "true" "false")
+    [[ -z "$NEW_CP" ]] && exit 0
 
-[[ -z "$RESULT" || "$RESULT" == "cancelled" ]] && exit 0
+    echo ""
+    gum style "push_commits — Can Claude push commits automatically?"
+    NEW_PC=$(gum choose --selected "$CURR_PC" "true" "false")
+    [[ -z "$NEW_PC" ]] && exit 0
 
-IFS='|' read -r NEW_CI NEW_CP NEW_PC NEW_MI <<< "$RESULT"
+    echo ""
+    gum style "max_issues_per_run — Max issues per scheduled run (1–20):"
+    NEW_MI=$(gum input --value "$CURR_MI" --placeholder "1-20")
+    [[ -z "$NEW_MI" ]] && exit 0
 
-# Validate numeric field
-if ! [[ "$NEW_MI" =~ ^[0-9]+$ ]] || (( NEW_MI < 1 || NEW_MI > 20 )); then
-  osascript -e 'display alert "Invalid input" message "max_issues_per_run must be a number between 1 and 20." as warning' >/dev/null
-  exit 1
-fi
+    if ! [[ "$NEW_MI" =~ ^[0-9]+$ ]] || (( NEW_MI < 1 || NEW_MI > 20 )); then
+      gum style --foreground 1 "✗ max_issues_per_run must be a number between 1 and 20"
+      exit 1
+    fi
+    ;;
+esac
 
+# ── Confirm ───────────────────────────────────────────────────
+echo ""
+gum confirm "Save config for $REPO?" || exit 0
+
+# ── Build and write config ────────────────────────────────────
 NEW_CONFIG=$($JQ -nc \
-  --argjson create_issues     "$NEW_CI" \
-  --argjson create_prs        "$NEW_CP" \
-  --argjson push_commits      "$NEW_PC" \
+  --arg     preset           "$PRESET" \
+  --argjson create_issues    "$NEW_CI" \
+  --argjson create_prs       "$NEW_CP" \
+  --argjson push_commits     "$NEW_PC" \
   --argjson max_issues_per_run "$NEW_MI" \
-  '{create_issues: $create_issues, create_prs: $create_prs, push_commits: $push_commits, max_issues_per_run: $max_issues_per_run}')
+  '{preset: $preset, create_issues: $create_issues, create_prs: $create_prs, push_commits: $push_commits, max_issues_per_run: $max_issues_per_run}')
 
-# POST if not yet exists, PATCH if it does
 if gh api "repos/$REPO/actions/variables/AUTO_DEV_CONFIG" &>/dev/null 2>&1; then
-  HTTP_METHOD="PATCH"
-  API_PATH="repos/$REPO/actions/variables/AUTO_DEV_CONFIG"
+  HTTP_METHOD="PATCH"; API_PATH="repos/$REPO/actions/variables/AUTO_DEV_CONFIG"
 else
-  HTTP_METHOD="POST"
-  API_PATH="repos/$REPO/actions/variables"
+  HTTP_METHOD="POST";  API_PATH="repos/$REPO/actions/variables"
 fi
 
-if gh api -X "$HTTP_METHOD" "$API_PATH" -f name="AUTO_DEV_CONFIG" -f value="$NEW_CONFIG" >/dev/null 2>&1; then
-  osascript -e "display notification \"Config saved for $REPO\" with title \"Auto-dev\"" >/dev/null || true
+echo ""
+if gh api -X "$HTTP_METHOD" "$API_PATH" \
+     -f name="AUTO_DEV_CONFIG" -f value="$NEW_CONFIG" >/dev/null 2>&1; then
+  gum style --foreground 2 "✓ Config saved (preset: $PRESET)"
 else
-  osascript -e 'display alert "Save failed" message "Could '\''t write repo variable. Make sure '\''gh'\'' has repo/actions write scope (gh auth refresh -s repo)." as warning' >/dev/null
+  gum style --foreground 1 "✗ Save failed — ensure gh has repo/actions write scope:"
+  echo "  gh auth refresh -s repo"
 fi
+echo ""

@@ -211,9 +211,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           RAW=$(gh api "repos/$GH_REPO/actions/variables/AUTO_DEV_CONFIG" --jq '.value' 2>/dev/null || echo '{}')
-          echo "create_issues=$(echo "$RAW"  | jq -r '.create_issues    // true')" >> $GITHUB_OUTPUT
-          echo "create_prs=$(echo "$RAW"     | jq -r '.create_prs       // true')" >> $GITHUB_OUTPUT
-          echo "push_commits=$(echo "$RAW"   | jq -r '.push_commits     // true')" >> $GITHUB_OUTPUT
+          echo "preset=$(echo "$RAW"         | jq -r '.preset           // "high"')" >> $GITHUB_OUTPUT
+          echo "create_issues=$(echo "$RAW"  | jq -r '.create_issues    // true')"  >> $GITHUB_OUTPUT
+          echo "create_prs=$(echo "$RAW"     | jq -r '.create_prs       // true')"  >> $GITHUB_OUTPUT
+          echo "push_commits=$(echo "$RAW"   | jq -r '.push_commits     // true')"  >> $GITHUB_OUTPUT
 
       - name: Determine current state
         id: state
@@ -740,8 +741,10 @@ jobs:
             }
           ' 2>/dev/null || echo '{"total":0}')
 
+          PRESET="${{ steps.repo-config.outputs.preset }}"
           jq -n \
             --argjson states "$ISSUE_STATES" \
             --argjson ts "$(date +%s)" \
             --arg repo "$GH_REPO" \
-            '{ts: $ts, repo: $repo, issues: $states}' > "$STATE_DIR/$REPO_SLUG-status.json"
+            --arg preset "${PRESET:-high}" \
+            '{ts: $ts, repo: $repo, preset: $preset, issues: $states}' > "$STATE_DIR/$REPO_SLUG-status.json"

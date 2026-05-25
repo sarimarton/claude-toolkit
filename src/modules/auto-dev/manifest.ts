@@ -14,6 +14,7 @@ export const manifest: ModuleManifest = {
     { binary: 'jq', description: 'JSON processor', required: true, installHint: 'brew install jq' },
     { binary: 'tmux', description: 'Terminal multiplexer', required: true, installHint: 'brew install tmux' },
     { binary: 'claude', description: 'Claude Code CLI', required: true },
+    { binary: 'gum', description: 'Charm gum (TUI tool)', required: true, installHint: 'brew install gum' },
   ],
   hooks: [],
   assets: [
