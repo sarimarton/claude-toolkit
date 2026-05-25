@@ -18,8 +18,7 @@ const cli = meow(`
     $ claude-toolkit uninstall all     Uninstall all modules
     $ claude-toolkit status            Per-module health check
     $ claude-toolkit doctor            Full integrity audit
-    $ claude-toolkit upgrade           Re-template installed modules
-    $ claude-toolkit update            Pull latest from origin + rebuild + upgrade
+    $ claude-toolkit update            Pull latest from origin, rebuild, reinstall modules
     $ claude-toolkit chart             Open usage chart in browser
 
   Options
@@ -49,7 +48,7 @@ if (command === 'update') {
   execSync('npm ci', { cwd: installDir, stdio: 'inherit' });
   execSync('npm run build', { cwd: installDir, stdio: 'inherit' });
   console.log('Upgrading installed modules...');
-  execSync(`${process.execPath} ${path.join(installDir, 'dist', 'cli.js')} upgrade`, { stdio: 'inherit' });
+  execSync(`${process.execPath} ${path.join(installDir, 'dist', 'cli.js')} reinstall`, { stdio: 'inherit' });
   // Clear update-check cache so the menu reflects the new version immediately
   try { fs.unlinkSync('/tmp/claude-toolkit-update-check.json'); } catch { /* ok if missing */ }
   process.exit(0);

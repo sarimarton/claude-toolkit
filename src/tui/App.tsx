@@ -28,7 +28,7 @@ export function App({ command, args, flags }: AppProps) {
     case 'doctor':
       return <DoctorReport />;
 
-    case 'upgrade':
+    case 'reinstall':
       return <InstallProgress modules={[]} autoConfirm={flags.yes} upgrade />;
 
     case 'chart':
