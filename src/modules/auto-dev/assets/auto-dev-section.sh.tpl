@@ -96,9 +96,9 @@ if [[ -n "$MANAGED_REPOS" ]]; then
         esac
 
         if [[ "$RUNNER_STATUS" == "running" ]]; then
-            DOT_ANSI="\033[38;2;48;209;88m●\033[0m"
+            DOT_ANSI=$'\033[38;2;48;209;88m●\033[0m'
         else
-            DOT_ANSI="\033[38;2;255;69;58m●\033[0m"
+            DOT_ANSI=$'\033[38;2;255;69;58m●\033[0m'
         fi
         TITLE="$REPO_NAME"
         [[ -n "$LAST_ICON" && -n "$LAST_TODO" ]] && TITLE="$TITLE  $LAST_ICON $LAST_TODO"
