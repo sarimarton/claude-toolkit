@@ -40,6 +40,12 @@ export const manifest: ModuleManifest = {
       executable: true,
     },
     {
+      source: 'claude-toolkit-update.sh.tpl',
+      target: 'scripts',
+      filename: 'claude-toolkit-update.sh',
+      executable: true,
+    },
+    {
       source: 'swiftbar-install.sh.tpl',
       target: 'scripts',
       filename: 'swiftbar-install.sh',
