@@ -10,7 +10,7 @@ SCRIPTS_DIR="{{scripts_dir}}"
 HOME_DIR="{{home}}"
 JQ={{jq}}
 TMUX_BIN={{tmux}}
-STATE_DIR="$HOME_DIR/Documents/state/managed-iterations"
+STATE_DIR="$HOME_DIR/Documents/state/claude-toolkit/auto-dev"
 ACTIVITY_LOG="$STATE_DIR/activity.jsonl"
 
 MANAGED_CACHE="/tmp/claude-toolkit-auto-dev-managed.json"

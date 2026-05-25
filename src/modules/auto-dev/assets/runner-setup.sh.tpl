@@ -19,7 +19,7 @@ SCRIPTS_DIR="{{scripts_dir}}"
 HOME_DIR="{{home}}"
 RUNNERS_DIR="$HOME_DIR/.config/claude-toolkit/runners"
 WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev.yml"
-STATE_DIR="$HOME_DIR/Documents/state/managed-iterations"
+STATE_DIR="$HOME_DIR/Documents/state/claude-toolkit/auto-dev"
 
 # ── Args ──────────────────────────────────────────────
 REPO="${1:-}"

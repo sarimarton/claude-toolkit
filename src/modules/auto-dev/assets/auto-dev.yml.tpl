@@ -636,7 +636,7 @@ jobs:
 
           PCT_AFTER=$(jq -r '.pct // ""' /tmp/claude-usage.json 2>/dev/null || echo "")
 
-          STATE_DIR="$HOME/Documents/state/managed-iterations"
+          STATE_DIR="$HOME/Documents/state/claude-toolkit/auto-dev"
           mkdir -p "$STATE_DIR"
 
           ENTRY=$(jq -nc \
