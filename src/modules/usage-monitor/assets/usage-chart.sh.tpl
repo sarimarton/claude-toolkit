@@ -187,20 +187,49 @@ if os.path.exists(marker_log_path):
 model_labels = {"s": "Sonnet", "o": "Opus", "h": "Haiku"}
 model_counts = defaultdict(int)
 model_quality = defaultdict(lambda: {"+": 0, "-": 0, "?": 0})
+sess_by_model = defaultdict(lambda: defaultdict(list))  # m -> sess -> [entries]
+all_sessions = defaultdict(list)
 
 for entry in marker_entries:
     m = entry.get("m", "?")
     q = entry.get("q", "?")
+    s = entry.get("session", "?")
     if m in model_labels:
         model_counts[m] += 1
         if q in ("+", "-", "?"):
             model_quality[m][q] += 1
+        sess_by_model[m][s].append(entry)
+    all_sessions[s].append(entry)
+
+def first_neg_turn(entries):
+    for e in sorted(entries, key=lambda x: x.get("turn", 0)):
+        if e.get("q") == "-":
+            return e.get("turn")
+    return None
+
+def max_pos_streak(entries):
+    streak = max_s = 0
+    for e in sorted(entries, key=lambda x: x.get("turn", 0)):
+        if e.get("q") == "+":
+            streak += 1
+            max_s = max(max_s, streak)
+        elif e.get("q") == "-":
+            streak = 0
+    return max_s
 
 total_turns = len(marker_entries)
 total_pos = sum(model_quality[m]["+"] for m in model_quality)
 total_neg = sum(model_quality[m]["-"] for m in model_quality)
 total_rated = total_pos + total_neg
 overall_sat = round(total_pos / total_rated * 100, 1) if total_rated > 0 else None
+
+# Topic changes: consecutive entries in a session where topic differs
+topic_changes = 0
+for sess, entries in all_sessions.items():
+    sorted_e = sorted(entries, key=lambda x: x.get("turn", 0))
+    for i in range(1, len(sorted_e)):
+        if sorted_e[i].get("topic") != sorted_e[i-1].get("topic"):
+            topic_changes += 1
 
 model_stats = []
 for code in ("s", "o", "h"):
@@ -210,15 +239,25 @@ for code in ("s", "o", "h"):
     neg = model_quality[code]["-"]
     unk = model_quality[code]["?"]
     rated = pos + neg
+    neg_turns = []
+    for sess_entries in sess_by_model[code].values():
+        t = first_neg_turn(sess_entries)
+        if t is not None:
+            neg_turns.append(t)
+    deg_point = round(sum(neg_turns) / len(neg_turns), 1) if neg_turns else None
+    max_streak = max((max_pos_streak(e) for e in sess_by_model[code].values()), default=0)
     model_stats.append({
         "code": code, "label": model_labels[code], "total": total,
         "pos": pos, "neg": neg, "unk": unk,
         "satPct": round(pos / rated * 100, 1) if rated > 0 else None,
+        "degPoint": deg_point,
+        "maxStreak": max_streak,
     })
 
 marker_result = {
     "totalTurns": total_turns,
     "overallSat": overall_sat,
+    "topicChanges": topic_changes,
     "modelStats": model_stats,
 }
 
@@ -334,7 +373,10 @@ HTML = r"""<!DOCTYPE html>
   <h2>Model &amp; Quality Analysis</h2>
   <p class="desc">Turn-level data from <code>marker-log.jsonl</code>. Satisfaction = current turn rates the previous inference (+&nbsp;correct,&nbsp;-&nbsp;corrected,&nbsp;?&nbsp;first-turn).</p>
   <div class="stats" id="markerStats" style="margin-bottom:16px;"></div>
-  <canvas id="markerChart" style="max-height:280px;"></canvas>
+  <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-start;">
+    <canvas id="markerChart" style="max-height:260px; flex:1; min-width:300px;"></canvas>
+    <div style="flex:1; min-width:280px;" id="markerInsights"></div>
+  </div>
 </div>
 
 <div class="chart-container">
@@ -575,9 +617,35 @@ function buildMarkerSection() {
   document.getElementById('markerStats').innerHTML =
     '<div class="stat-card"><div class="stat-value">' + md.totalTurns + '</div><div class="stat-label">Logged turns</div></div>' +
     '<div class="stat-card"><div class="stat-value">' + satStr + '</div><div class="stat-label">Satisfaction rate</div></div>' +
-    '<div class="stat-card"><div class="stat-value">' + topModel + '</div><div class="stat-label">Most used model</div></div>';
+    '<div class="stat-card"><div class="stat-value">' + topModel + '</div><div class="stat-label">Most used model</div></div>' +
+    '<div class="stat-card"><div class="stat-value">' + (md.topicChanges || 0) + '</div><div class="stat-label">Topic changes</div></div>';
 
   if (md.modelStats.length === 0) return;
+
+  // Insights table
+  var tbl = '<table class="cost-table"><thead><tr>' +
+    '<th>Model</th><th>Turns</th><th>Sat. %</th><th>Avg 1st ✗ at turn</th><th>Max ✓ streak</th>' +
+    '</tr></thead><tbody>';
+  for (var i = 0; i < md.modelStats.length; i++) {
+    var s = md.modelStats[i];
+    var sat = s.satPct != null ? s.satPct + '%' : '—';
+    var satColor = s.satPct == null ? '#888' : s.satPct >= 80 ? '#33bb33' : s.satPct >= 60 ? '#e6b310' : '#e64646';
+    var deg = s.degPoint != null ? '~' + s.degPoint : '—';
+    var streak = s.maxStreak > 0 ? s.maxStreak : '—';
+    tbl += '<tr><td>' + s.label + '</td><td>' + s.total + '</td>' +
+      '<td style="color:' + satColor + '">' + sat + '</td>' +
+      '<td style="color:#aaa">' + deg + '</td>' +
+      '<td style="color:#aaa">' + streak + '</td></tr>';
+  }
+  tbl += '</tbody></table>';
+  tbl += '<p class="cost-note" style="margin-top:10px;">' +
+    '<strong>Sat. %</strong> = satisfied turns / (satisfied + corrected).<br>' +
+    '<strong>Avg 1st ✗</strong> = average turn number of first correction per session.<br>' +
+    '<strong>Max ✓ streak</strong> = longest consecutive satisfied run across all sessions.' +
+    '</p>';
+  document.getElementById('markerInsights').innerHTML = tbl;
+
+  // Chart
   var labels = md.modelStats.map(function(s) { return s.label; });
   var posData = md.modelStats.map(function(s) { return s.pos; });
   var negData = md.modelStats.map(function(s) { return s.neg; });
@@ -597,7 +665,7 @@ function buildMarkerSection() {
           var s = md.modelStats[item.dataIndex];
           var rated = s.pos + s.neg;
           var sat = rated > 0 ? Math.round(s.pos / rated * 100) + '%' : 'N/A';
-          if (item.datasetIndex === 0) return '+ satisfied: ' + item.parsed.y + '  (sat rate: ' + sat + ')';
+          if (item.datasetIndex === 0) return '+ satisfied: ' + item.parsed.y + '  (sat: ' + sat + ')';
           if (item.datasetIndex === 1) return '- corrected: ' + item.parsed.y;
           return '? first-turn: ' + item.parsed.y;
         }}}
