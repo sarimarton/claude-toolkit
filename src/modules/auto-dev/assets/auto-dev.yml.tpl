@@ -281,42 +281,34 @@ jobs:
           ISSUE_TITLE="${{ steps.state.outputs.title }}"
           COMMENTS=$(jq -r '[.comments[] | "**\(.author.login)** (\(.createdAt)):\n\(.body)"] | join("\n\n---\n\n")' "$WORK_DIR/issue.json")
 
-          cat > "$WORK_DIR/evaluate-prompt.txt" <<PROMPT
-You are an AI developer evaluating a GitHub issue.
-
-REQUIRED STEPS (in order):
-1. Read CLAUDE.md in the repo root if it exists.
-2. Find and read the files, components, and modules mentioned in the issue (use available tools).
-3. Based on what you read, decide:
-   - Do you have questions that can't be answered from the code? → CLARIFY
-   - Clearly implementable based on the codebase? → READY
-   - Too complex / risky / ambiguous intent? → BLOCKED
-
-RULES:
-- Prefer CLARIFY over guessing. If the issue has any ambiguity, ask.
-- When asking questions, include code context and your recommendation.
-- Ask at most 2-3 questions, the most important ones.
-- If a question is trivial and has an obvious good answer, decide yourself.
-- Do NOT choose READY without reading the relevant code first.
-- Output ONLY valid JSON, no other text:
-
-If CLARIFY:
-{"decision": "clarify", "questions": "Your questions in Markdown with code references"}
-
-If READY:
-{"decision": "ready", "summary": "One-line issue summary", "approach": "Planned approach in 2-3 sentences with concrete file references"}
-
-If BLOCKED:
-{"decision": "blocked", "reason": "Why you cannot proceed"}
-
---- ISSUE #${ISSUE_NUMBER}: ${ISSUE_TITLE} ---
-
-${ISSUE_BODY}
-
---- COMMENTS ---
-
-${COMMENTS}
-PROMPT
+          {
+            echo "You are an AI developer evaluating a GitHub issue."
+            echo ""
+            echo "REQUIRED STEPS (in order):"
+            echo "1. Read CLAUDE.md in the repo root if it exists."
+            echo "2. Find and read the files, components, and modules mentioned in the issue (use available tools)."
+            echo "3. Based on what you read, decide:"
+            echo "   - Do you have questions that can't be answered from the code? -> CLARIFY"
+            echo "   - Clearly implementable based on the codebase? -> READY"
+            echo "   - Too complex / risky / ambiguous intent? -> BLOCKED"
+            echo ""
+            echo "RULES:"
+            echo "- Prefer CLARIFY over guessing. If the issue has any ambiguity, ask."
+            echo "- When asking questions, include code context and your recommendation."
+            echo "- Ask at most 2-3 questions, the most important ones."
+            echo "- If a question is trivial and has an obvious good answer, decide yourself."
+            echo "- Do NOT choose READY without reading the relevant code first."
+            echo "- Output ONLY valid JSON, no other text:"
+            echo ""
+            echo 'If CLARIFY: {"decision": "clarify", "questions": "Your questions in Markdown with code references"}'
+            echo 'If READY:   {"decision": "ready", "summary": "One-line issue summary", "approach": "Planned approach in 2-3 sentences with concrete file references"}'
+            echo 'If BLOCKED: {"decision": "blocked", "reason": "Why you cannot proceed"}'
+            echo ""
+            printf '--- ISSUE #%s: %s ---\n\n' "$ISSUE_NUMBER" "$ISSUE_TITLE"
+            printf '%s\n' "$ISSUE_BODY"
+            printf '\n--- COMMENTS ---\n\n'
+            printf '%s\n' "$COMMENTS"
+          } > "$WORK_DIR/evaluate-prompt.txt"
 
           RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/evaluate-result.json"
@@ -426,27 +418,22 @@ PROMPT
           ISSUE_TITLE="${{ steps.state.outputs.title }}"
           COMMENTS=$(jq -r '[.comments[] | "**\(.author.login)** (\(.createdAt)):\n\(.body)"] | join("\n\n---\n\n")' "$WORK_DIR/issue.json")
 
-          cat > "$WORK_DIR/plan-prompt.txt" <<PROMPT
-You are an AI developer creating a task breakdown for a GitHub issue.
-
-Read the codebase to understand the context, then output a JSON task list.
-
-RULES:
-- Each task must be completable in ONE iteration (10-20 minutes of Claude work, one logical change).
-- Tasks must be ordered correctly (dependencies first).
-- Be specific: include file paths and what exactly changes.
-- Output ONLY valid JSON:
-
-{"tasks": ["task description 1", "task description 2", ...]}
-
---- ISSUE #${ISSUE_NUMBER}: ${ISSUE_TITLE} ---
-
-${ISSUE_BODY}
-
---- DISCUSSION ---
-
-${COMMENTS}
-PROMPT
+          {
+            echo "You are an AI developer creating a task breakdown for a GitHub issue."
+            echo ""
+            echo "Read the codebase to understand the context, then output a JSON task list."
+            echo ""
+            echo "RULES:"
+            echo "- Each task must be completable in ONE iteration (10-20 minutes of Claude work, one logical change)."
+            echo "- Tasks must be ordered correctly (dependencies first)."
+            echo "- Be specific: include file paths and what exactly changes."
+            echo '- Output ONLY valid JSON: {"tasks": ["task description 1", "task description 2", ...]}'
+            echo ""
+            printf '--- ISSUE #%s: %s ---\n\n' "$ISSUE_NUMBER" "$ISSUE_TITLE"
+            printf '%s\n' "$ISSUE_BODY"
+            printf '\n--- DISCUSSION ---\n\n'
+            printf '%s\n' "$COMMENTS"
+          } > "$WORK_DIR/plan-prompt.txt"
 
           RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/plan-result.json"
@@ -541,26 +528,21 @@ PROMPT
           PR_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName -q '.headRefName')
           git checkout "$PR_BRANCH"
 
-          cat > "$WORK_DIR/implement-prompt.txt" <<PROMPT
-You are an AI developer implementing a specific task from a pull request.
-
-TASK: $NEXT_TODO
-
-RULES:
-- Implement ONLY this specific task. Do not do more.
-- Read relevant files before editing.
-- Write tests where appropriate.
-- After implementing, output ONLY valid JSON:
-
-If completed successfully:
-{"status": "completed", "summary": "What you changed and why"}
-
-If blocked (cannot continue without more info):
-{"status": "blocked", "reason": "What is blocking you", "suggestion": "What info you need"}
-
-If you have a question:
-{"status": "question", "text": "Your question", "context": "Relevant code context"}
-PROMPT
+          {
+            echo "You are an AI developer implementing a specific task from a pull request."
+            echo ""
+            printf 'TASK: %s\n' "$NEXT_TODO"
+            echo ""
+            echo "RULES:"
+            echo "- Implement ONLY this specific task. Do not do more."
+            echo "- Read relevant files before editing."
+            echo "- Write tests where appropriate."
+            echo "- After implementing, output ONLY valid JSON:"
+            echo ""
+            echo 'If completed: {"status": "completed", "summary": "What you changed and why"}'
+            echo 'If blocked:   {"status": "blocked", "reason": "What is blocking you", "suggestion": "What info you need"}'
+            echo 'If question:  {"status": "question", "text": "Your question", "context": "Relevant code context"}'
+          } > "$WORK_DIR/implement-prompt.txt"
 
           RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/implement-result.json"
@@ -653,24 +635,20 @@ Context: $CONTEXT}"
           TS=$(date +%s)
           DURATION=$(( TS - $(date -d @"${ACTIONS_STEP_DEBUG_START:-$TS}" +%s 2>/dev/null || echo "$TS") ))
 
-          PCT_AFTER=$(python3 -c "import json; d=json.load(open('/tmp/claude-usage.json')); print(d.get('pct', ''))" 2>/dev/null || echo "")
+          PCT_AFTER=$(jq -r '.pct // ""' /tmp/claude-usage.json 2>/dev/null || echo "")
 
           STATE_DIR="$HOME/Documents/state/managed-iterations"
           mkdir -p "$STATE_DIR"
 
-          python3 -c "
-import json, sys
-entry = {
-  'ts': $TS,
-  'repo': '${{ env.GH_REPO }}',
-  'issue': '${{ env.GH_REPO }}#${{ env.ISSUE_NUMBER }}',
-  'pr': '${{ env.GH_REPO }}#$PR_NUM' if '$PR_NUM' else None,
-  'model': '$MODEL',
-  'state': '$STATE',
-  'todo': '$TODO' or None,
-  'outcome': '$OUTCOME',
-  'usage_pct_after': $PCT_AFTER if '$PCT_AFTER' else None,
-}
-with open('$STATE_DIR/activity.jsonl', 'a') as f:
-  f.write(json.dumps({k: v for k, v in entry.items() if v is not None}) + '\n')
-"
+          ENTRY=$(jq -nc \
+            --argjson ts "$TS" \
+            --arg repo "${{ env.GH_REPO }}" \
+            --arg issue "${{ env.GH_REPO }}#${{ env.ISSUE_NUMBER }}" \
+            --arg model "$MODEL" \
+            --arg state "$STATE" \
+            --arg outcome "$OUTCOME" \
+            '{ts: $ts, repo: $repo, issue: $issue, model: $model, state: $state, outcome: $outcome}')
+          [[ -n "$PR_NUM" ]] && ENTRY=$(echo "$ENTRY" | jq --arg v "${{ env.GH_REPO }}#$PR_NUM" '. + {pr: $v}')
+          [[ -n "$TODO" ]]    && ENTRY=$(echo "$ENTRY" | jq --arg v "$TODO"                     '. + {todo: $v}')
+          [[ -n "$PCT_AFTER" ]] && ENTRY=$(echo "$ENTRY" | jq --argjson v "$PCT_AFTER"          '. + {usage_pct_after: $v}')
+          echo "$ENTRY" >> "$STATE_DIR/activity.jsonl"

@@ -158,6 +158,7 @@ else
 fi
 
 # ── Done ──────────────────────────────────────────────
+osascript -e "display notification \"auto-dev installed in $REPO. Runner: auto-dev-runner-control.sh start $REPO\" with title \"Claude Toolkit\" subtitle \"Auto-dev Setup Complete\"" 2>/dev/null || true
 echo ""
 echo "✓ Setup complete for $REPO"
 echo ""
