@@ -15,9 +15,10 @@ if [[ -n "$marker" ]]; then
     if [[ -n "$topic" ]]; then
         {{tmux}} rename-window "✻ $topic" 2>/dev/null
 
-        model=$(echo "$marker" | sed -n 's/.*\$m:[[:space:]]*\([soh]\).*/\1/p')
         pct=$(echo "$marker" | sed -n 's/.*\$pct:[[:space:]]*\([0-9]*\).*/\1/p')
-        quality=$(echo "$marker" | sed -n 's/.*\$q:[[:space:]]*\([+?-]\).*/\1/p')
+        q_raw=$(echo "$marker" | sed -n 's/.*\$q:[[:space:]]*\([soh][+?-]\).*/\1/p')
+        model="${q_raw:0:1}"
+        quality="${q_raw:1:1}"
 
         session=$({{tmux}} display-message -p '#{session_name}' 2>/dev/null)
         if [[ -n "$session" ]]; then
