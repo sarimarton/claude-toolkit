@@ -66,9 +66,11 @@ if [[ -z "$LOCAL_PATH" ]]; then
 fi
 
 if [[ ! -d "$LOCAL_PATH" ]]; then
-  echo "Error: local path not found: $LOCAL_PATH"
-  echo "Clone the repo first or pass the path explicitly."
-  exit 1
+  echo "→ Local path not found: $LOCAL_PATH"
+  echo "→ Cloning $REPO..."
+  mkdir -p "$(dirname "$LOCAL_PATH")"
+  gh repo clone "$REPO" "$LOCAL_PATH"
+  echo "  Cloned to $LOCAL_PATH"
 fi
 
 echo "Setting up auto-dev for $REPO"
