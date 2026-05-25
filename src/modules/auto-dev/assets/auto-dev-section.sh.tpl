@@ -34,10 +34,10 @@ _refresh_repos() {
     [[ -z "$all" ]] && return
     ts=$(date +%s)
     managed=$(echo "$all" | $JQ -r \
-        '[.[] | select(.repositoryTopics | map(.name) | contains(["auto-dev"])) | .nameWithOwner]' \
+        '[.[] | select(.repositoryTopics | map(.name) | contains(["auto-dev"])) | .nameWithOwner] | sort' \
         2>/dev/null)
     candidates=$(echo "$all" | $JQ -r \
-        '[.[] | select(.repositoryTopics | map(.name) | contains(["auto-dev"]) | not) | .nameWithOwner]' \
+        '[.[] | select(.repositoryTopics | map(.name) | contains(["auto-dev"]) | not) | .nameWithOwner] | sort' \
         2>/dev/null)
     [[ -z "$managed" || -z "$candidates" ]] && return
     printf '{"repos":%s,"ts":%s}\n' "$managed" "$ts" > "$MANAGED_CACHE"
