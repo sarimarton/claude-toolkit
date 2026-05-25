@@ -324,6 +324,7 @@ jobs:
             echo "- When asking questions, include code context and your recommendation."
             echo "- Ask at most 2-3 questions, the most important ones."
             echo "- If a question is trivial and has an obvious good answer, decide yourself."
+            echo "- If verifying the implementation requires non-trivial setup (visual/audio output, hardware, complex integration, or no obvious automated test), include a question about the expected testing approach in your CLARIFY decision."
             echo "- Do NOT choose READY without reading the relevant code first."
             echo "- Output ONLY valid JSON, no other text:"
             echo ""
@@ -492,6 +493,9 @@ jobs:
             echo "- Each task must be completable in ONE iteration (10-20 minutes of Claude work, one logical change)."
             echo "- Tasks must be ordered correctly (dependencies first)."
             echo "- Be specific: include file paths and what exactly changes."
+            echo "- Always add at least one testing task as the LAST task."
+            echo "  - If automated/headless testing is possible, describe it precisely: what command to run, what to assert."
+            echo "  - If only manual testing is possible, add a task in this exact format: 'Manual validation: [exactly what to do and what to look for]'"
             echo '- Output ONLY valid JSON: {"tasks": ["task description 1", "task description 2", ...]}'
             echo ""
             printf '--- ISSUE #%s: %s ---\n\n' "$ISSUE_NUMBER" "$ISSUE_TITLE"
@@ -600,7 +604,8 @@ jobs:
             echo "RULES:"
             echo "- Implement ONLY this specific task. Do not do more."
             echo "- Read relevant files before editing."
-            echo "- Write tests where appropriate."
+            echo "- If the TASK starts with 'Manual validation:', do NOT implement anything."
+            echo "  Instead output: {\"status\": \"question\", \"text\": \"Please perform manual validation: <task>\", \"context\": \"<what was implemented so far>\"}"
             echo "- After implementing, output ONLY valid JSON:"
             echo ""
             echo 'If completed: {"status": "completed", "summary": "What you changed and why"}'
@@ -641,6 +646,7 @@ jobs:
           # Check if all todos are now done
           PR_BODY=$(gh pr view "$PR_NUMBER" --json body -q '.body')
           REMAINING=$(echo "$PR_BODY" | grep -c '^\- \[ \]' || true)
+          MANUAL_REMAINING=$(echo "$PR_BODY" | grep -c '^\- \[ \] Manual validation:' || true)
 
           if [[ "$REMAINING" -eq 0 ]]; then
             gh pr edit "$PR_NUMBER" --ready-for-review 2>/dev/null || true
@@ -648,6 +654,12 @@ jobs:
             gh issue edit "$ISSUE_NUMBER" \
               --remove-label "ai:in-progress" \
               --add-label "ai:done" 2>/dev/null || true
+          elif [[ "$REMAINING" -eq "$MANUAL_REMAINING" ]]; then
+            # Only manual validation tasks remain — ask human
+            MANUAL_LIST=$(echo "$PR_BODY" | grep '^\- \[ \] Manual validation:' | sed 's/^- \[ \] /• /' | tr '\n' '\n')
+            gh pr comment "$PR_NUMBER" --body "$(printf '🤖 **Auto-dev** — Implementation complete. Manual validation required before this PR can be marked done:\n\n%s\n\nPlease test and check off each item.' "$MANUAL_LIST")"
+            gh pr edit "$PR_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
+            gh issue edit "$ISSUE_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
           else
             gh pr comment "$PR_NUMBER" --body "$(printf '%s\n%s\n%s\n' "🤖 **Auto-dev** — ✓ \`$TODO\`" "$SUMMARY" "($REMAINING task(s) remaining)")"
           fi
