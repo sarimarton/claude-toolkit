@@ -155,7 +155,7 @@ export function getInstalledModuleIds(config: ResolvedConfig): Set<string> {
   const installed = new Set<string>();
   for (const m of ALL_MANIFESTS) {
     const status = getModuleStatus(m, config);
-    if (status.status === 'installed' || status.status === 'partial') {
+    if (status.status === 'installed' || status.status === 'partial' || status.status === 'outdated') {
       installed.add(m.id);
     }
   }
