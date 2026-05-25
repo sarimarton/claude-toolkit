@@ -56,8 +56,6 @@ MANAGED_REPOS=""
 CANDIDATE_REPOS=""
 [[ -f "$CANDIDATES_CACHE" ]] && CANDIDATE_REPOS=$($JQ -r '.repos[]?' "$CANDIDATES_CACHE" 2>/dev/null)
 
-[[ -z "$MANAGED_REPOS" && -z "$CANDIDATE_REPOS" ]] && exit 0
-
 # ── Managed repos (top-scope) ─────────────────────────────
 
 if [[ -n "$MANAGED_REPOS" ]]; then
@@ -164,12 +162,16 @@ fi
 
 # ── Install submenu ───────────────────────────────────────
 
+[[ -z "$MANAGED_REPOS" ]] && echo "---"
+
 if [[ -n "$CANDIDATE_REPOS" ]]; then
-    [[ -z "$MANAGED_REPOS" ]] && echo "---"
     echo "Install Auto-dev to repo… | size=12 color=#888888"
     while IFS= read -r REPO; do
         [[ -z "$REPO" ]] && continue
         REPO_NAME="${REPO##*/}"
         echo "--$REPO_NAME ($REPO) | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh param1=$REPO terminal=true refresh=true size=12"
     done <<< "$CANDIDATE_REPOS"
+else
+    # Cache not ready yet — show as plain terminal launch (same as before cache populates)
+    echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-runner-setup.sh terminal=true refresh=true size=12 color=#888888"
 fi
