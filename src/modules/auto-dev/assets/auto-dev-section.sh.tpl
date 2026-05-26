@@ -180,10 +180,10 @@ if [[ -n "$MANAGED_REPOS" ]]; then
         echo "--Workflow runs | href=https://github.com/$REPO/actions/workflows/auto-dev.yml size=12"
         echo "--Repo | href=https://github.com/$REPO size=12"
         echo "-----"
-        CURRENT_PRESET=""
-        [[ -f "$STATUS_JSON" ]] && CURRENT_PRESET=$($JQ -r '.preset // ""' "$STATUS_JSON" 2>/dev/null)
-        if [[ -n "$CURRENT_PRESET" ]]; then
-            echo "--Config: $CURRENT_PRESET | bash=$SCRIPTS_DIR/auto-dev-config.sh param1=$REPO terminal=false refresh=false size=12"
+        CURRENT_AUTONOMY=""
+        [[ -f "$STATUS_JSON" ]] && CURRENT_AUTONOMY=$($JQ -r '.autonomy // ""' "$STATUS_JSON" 2>/dev/null)
+        if [[ -n "$CURRENT_AUTONOMY" ]]; then
+            echo "--Autonomy: $CURRENT_AUTONOMY | bash=$SCRIPTS_DIR/auto-dev-config.sh param1=$REPO terminal=false refresh=false size=12"
         else
             echo "--Config… | bash=$SCRIPTS_DIR/auto-dev-config.sh param1=$REPO terminal=false refresh=false size=12"
         fi
@@ -192,8 +192,9 @@ if [[ -n "$MANAGED_REPOS" ]]; then
     done <<< "$MANAGED_REPOS"
 fi
 
-# ── Install button ────────────────────────────────────────
+# ── Install button + global config ────────────────────────
 
 [[ -z "$MANAGED_REPOS" ]] && echo "---"
 
 echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-install.sh terminal=false refresh=false size=12"
+echo "Global config… | bash=$SCRIPTS_DIR/auto-dev-global-config.sh terminal=false refresh=false size=12"

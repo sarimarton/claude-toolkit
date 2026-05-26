@@ -13,6 +13,11 @@ on:
         description: "Issue number (empty = scan all ai-labeled issues)"
         required: false
         type: string
+      skip_usage_check:
+        description: "Skip the Claude usage threshold check"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: auto-dev
@@ -54,9 +59,17 @@ jobs:
       - name: Check Claude tier usage bucket
         id: check
         run: |
-          USAGE_FILE="/tmp/claude-usage.json"
-          MIN_PCT_TO_START="${MIN_PCT_TO_START:-50}"
+          if [[ "${{ inputs.skip_usage_check }}" == "true" ]]; then
+            echo "skip_usage_check requested — bypassing threshold"
+            echo "ok=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
+          GLOBAL_CONFIG="$HOME/.config/claude-toolkit/global.json"
+          BAILOUT_PCT=$(jq -r '.bailout_pct // empty' "$GLOBAL_CONFIG" 2>/dev/null | head -n 1)
+          BAILOUT_PCT="${BAILOUT_PCT:-50}"
+
+          USAGE_FILE="/tmp/claude-usage.json"
           if [[ ! -f "$USAGE_FILE" ]]; then
             echo "Usage file not found — assuming bucket available"
             echo "ok=true" >> $GITHUB_OUTPUT
@@ -65,10 +78,10 @@ jobs:
 
           PCT=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct', 0))" 2>/dev/null || echo "0")
 
-          echo "Current usage: ${PCT}%  (threshold: ${MIN_PCT_TO_START}%)"
+          echo "Current usage: ${PCT}%  (threshold: ${BAILOUT_PCT}%)"
 
-          if (( PCT >= MIN_PCT_TO_START )); then
-            echo "Usage too high (${PCT}% >= ${MIN_PCT_TO_START}%) — skipping this run"
+          if (( PCT >= BAILOUT_PCT )); then
+            echo "Usage too high (${PCT}% >= ${BAILOUT_PCT}%) — skipping this run"
             echo "ok=false" >> $GITHUB_OUTPUT
           else
             echo "ok=true" >> $GITHUB_OUTPUT
@@ -85,15 +98,11 @@ jobs:
       matrix: ${{ steps.get-issues.outputs.matrix }}
       has_issues: ${{ steps.get-issues.outputs.has_issues }}
     steps:
-      - name: Load max issues from config
+      - name: Load max issues from global config
         id: repo-config
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          RAW=$(gh api "repos/$GH_REPO/actions/variables/AUTO_DEV_CONFIG" 2>/dev/null | jq -r '.value' 2>/dev/null | head -n 1 || true)
-          [[ -z "$RAW" ]] && RAW='{}'
-          MAX=$(echo "$RAW" | jq -r '.max_issues_per_run // empty' 2>/dev/null | head -n 1)
+          GLOBAL_CONFIG="$HOME/.config/claude-toolkit/global.json"
+          MAX=$(jq -r '.max_issues_per_run // empty' "$GLOBAL_CONFIG" 2>/dev/null | head -n 1)
           echo "max_issues=${MAX:-${{ env.MAX_ISSUES_PER_RUN }}}" >> $GITHUB_OUTPUT
 
       - name: Get issues to process
@@ -213,14 +222,15 @@ jobs:
         run: |
           RAW=$(gh api "repos/$GH_REPO/actions/variables/AUTO_DEV_CONFIG" 2>/dev/null | jq -r '.value' 2>/dev/null | head -n 1 || true)
           [[ -z "$RAW" ]] && RAW='{}'
-          PRESET=$(echo "$RAW" | jq -r '.preset // "high"' | head -n 1)
-          CI=$(echo "$RAW" | jq -r 'if .create_issues == false then "false" else "true" end' | head -n 1)
-          CP=$(echo "$RAW" | jq -r 'if .create_prs    == false then "false" else "true" end' | head -n 1)
-          PC=$(echo "$RAW" | jq -r 'if .push_commits  == false then "false" else "true" end' | head -n 1)
-          printf 'preset=%s\n'        "$PRESET" >> "$GITHUB_OUTPUT"
-          printf 'create_issues=%s\n' "$CI"     >> "$GITHUB_OUTPUT"
-          printf 'create_prs=%s\n'    "$CP"     >> "$GITHUB_OUTPUT"
-          printf 'push_commits=%s\n'  "$PC"     >> "$GITHUB_OUTPUT"
+          AUTONOMY=$(echo "$RAW" | jq -r '.autonomy // "high"' | head -n 1)
+          case "$AUTONOMY" in
+            low)  CI=true; CP=false; PC=false ;;
+            *)    AUTONOMY=high; CI=true; CP=true; PC=true ;;
+          esac
+          printf 'autonomy=%s\n'      "$AUTONOMY" >> "$GITHUB_OUTPUT"
+          printf 'create_issues=%s\n' "$CI"       >> "$GITHUB_OUTPUT"
+          printf 'create_prs=%s\n'    "$CP"       >> "$GITHUB_OUTPUT"
+          printf 'push_commits=%s\n'  "$PC"       >> "$GITHUB_OUTPUT"
 
       - name: Determine current state
         id: state
@@ -770,10 +780,10 @@ jobs:
             }
           ' 2>/dev/null || echo '{"total":0}')
 
-          PRESET="${{ steps.repo-config.outputs.preset }}"
+          AUTONOMY="${{ steps.repo-config.outputs.autonomy }}"
           jq -n \
             --argjson states "$ISSUE_STATES" \
             --argjson ts "$(date +%s)" \
             --arg repo "$GH_REPO" \
-            --arg preset "${PRESET:-high}" \
-            '{ts: $ts, repo: $repo, preset: $preset, issues: $states}' > "$STATE_DIR/$REPO_SLUG-status.json"
+            --arg autonomy "${AUTONOMY:-high}" \
+            '{ts: $ts, repo: $repo, autonomy: $autonomy, issues: $states}' > "$STATE_DIR/$REPO_SLUG-status.json"
