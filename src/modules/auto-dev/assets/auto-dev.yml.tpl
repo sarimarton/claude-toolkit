@@ -211,10 +211,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           RAW=$(gh api "repos/$GH_REPO/actions/variables/AUTO_DEV_CONFIG" --jq '.value' 2>/dev/null || echo '{}')
-          echo "preset=$(echo "$RAW"         | jq -r '.preset           // "high"')" >> $GITHUB_OUTPUT
-          echo "create_issues=$(echo "$RAW"  | jq -r '.create_issues    // true')"  >> $GITHUB_OUTPUT
-          echo "create_prs=$(echo "$RAW"     | jq -r '.create_prs       // true')"  >> $GITHUB_OUTPUT
-          echo "push_commits=$(echo "$RAW"   | jq -r '.push_commits     // true')"  >> $GITHUB_OUTPUT
+          PRESET=$(echo "$RAW" | jq -r '.preset // "high"')
+          CI=$(echo "$RAW" | jq -r 'if .create_issues == false then "false" else "true" end')
+          CP=$(echo "$RAW" | jq -r 'if .create_prs    == false then "false" else "true" end')
+          PC=$(echo "$RAW" | jq -r 'if .push_commits  == false then "false" else "true" end')
+          echo "preset=$PRESET"         >> $GITHUB_OUTPUT
+          echo "create_issues=$CI"      >> $GITHUB_OUTPUT
+          echo "create_prs=$CP"         >> $GITHUB_OUTPUT
+          echo "push_commits=$PC"       >> $GITHUB_OUTPUT
 
       - name: Determine current state
         id: state
