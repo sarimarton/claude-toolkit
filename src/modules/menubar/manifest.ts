@@ -61,9 +61,9 @@ export const manifest: ModuleManifest = {
       source: 'com.sarim.swiftbar-claude-watchdog.plist.tpl',
       target: 'launchagents',
       filename: 'com.sarim.swiftbar-claude-watchdog.plist',
-      executable: false,
     },
   ],
   // Install SwiftBar.app (via brew cask) if missing, point it at the plugin dir, and launch it.
+  // Also registers the claude watchdog LaunchAgent.
   postInstall: '{{scripts_dir}}/swiftbar-install.sh',
 };
