@@ -348,7 +348,13 @@ jobs:
           RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/evaluate-result.json"
 
-          DECISION=$(echo "$RESULT" | jq -r '.result // . | if type == "object" then .decision else . end | if . == null then "error" else . end' 2>/dev/null || echo "error")
+          # Claude may return non-JSON text (e.g. with insight markers). Extract .decision via jq,
+          # but require .result to BE parseable JSON; otherwise mark as error.
+          DECISION=$(echo "$RESULT" | jq -r '.result | fromjson? | .decision // "error"' 2>/dev/null || echo "error")
+          case "$DECISION" in
+            epic|clarify|ready|blocked) ;;
+            *) DECISION="error" ;;
+          esac
           echo "decision=$DECISION" >> $GITHUB_OUTPUT
 
       - name: "new → post clarifying question"
@@ -622,7 +628,11 @@ jobs:
           RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/implement-result.json"
 
-          STATUS=$(echo "$RESULT" | jq -r '.result // . | if type == "object" then .status else "error" end' 2>/dev/null || echo "error")
+          STATUS=$(echo "$RESULT" | jq -r '.result | fromjson? | .status // "error"' 2>/dev/null || echo "error")
+          case "$STATUS" in
+            completed|blocked|question) ;;
+            *) STATUS="error" ;;
+          esac
           echo "outcome=$STATUS" >> $GITHUB_OUTPUT
 
           if [[ "$STATUS" == "completed" ]]; then
