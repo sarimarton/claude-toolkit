@@ -345,12 +345,11 @@ jobs:
             printf '%s\n' "$COMMENTS"
           } > "$WORK_DIR/evaluate-prompt.txt"
 
-          RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
+          SCHEMA='{"type":"object","properties":{"decision":{"type":"string","enum":["epic","clarify","ready","blocked"]},"comment":{"type":"string"},"lhf":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"]}},"questions":{"type":"string"},"summary":{"type":"string"},"approach":{"type":"string"},"reason":{"type":"string"}},"required":["decision"]}'
+          RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/evaluate-result.json"
 
-          # Claude may return non-JSON text (e.g. with insight markers). Extract .decision via jq,
-          # but require .result to BE parseable JSON; otherwise mark as error.
-          DECISION=$(echo "$RESULT" | jq -r '.result | fromjson? | .decision // "error"' 2>/dev/null || echo "error")
+          DECISION=$(jq -r '.structured_output.decision // "error"' "$WORK_DIR/evaluate-result.json" 2>/dev/null || echo "error")
           case "$DECISION" in
             epic|clarify|ready|blocked) ;;
             *) DECISION="error" ;;
@@ -363,7 +362,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          QUESTIONS=$(jq -r '.result // . | if type == "object" then .questions else . end // "Could not extract questions."' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+          QUESTIONS=$(jq -r '.structured_output.questions // "Could not extract questions."' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
           ROUND=$(jq '[.comments[] | select(.body | test("<!-- auto-dev:question -->"))] | length' "$WORK_DIR/issue.json")
           {
             echo "🤖 **Auto-dev** — Question (round $((ROUND + 1)))"
@@ -383,8 +382,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          SUMMARY=$(jq -r '.result // . | if type == "object" then .summary else . end // "N/A"' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
-          APPROACH=$(jq -r '.result // . | if type == "object" then .approach else . end // "N/A"' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+          SUMMARY=$(jq -r '.structured_output.summary // "N/A"' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+          APPROACH=$(jq -r '.structured_output.approach // "N/A"' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
           {
             echo "🤖 **Auto-dev** — Ready"
             echo ""
@@ -407,8 +406,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          COMMENT=$(jq -r '.result // . | if type == "object" then .comment else . end // "This issue describes an epic-level goal."' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
-          LHF=$(jq -r '.result // . | if type == "object" then (.lhf // []) else [] end' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+          COMMENT=$(jq -r '.structured_output.comment // "This issue describes an epic-level goal."' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+          LHF=$(jq -c '.structured_output.lhf // []' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
 
           SUB_ISSUES=""
           if [[ "${{ steps.repo-config.outputs.create_issues }}" != "false" ]]; then
@@ -444,7 +443,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          REASON=$(jq -r '.result // . | if type == "object" then .reason else . end // "Evaluation failed or returned unexpected output."' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
+          REASON=$(jq -r '.structured_output.reason // "Evaluation failed or returned unexpected output."' "$WORK_DIR/evaluate-result.json" 2>/dev/null)
           {
             echo "🤖 **Auto-dev** — Blocked"
             echo ""
@@ -516,11 +515,12 @@ jobs:
             printf '%s\n' "$COMMENTS"
           } > "$WORK_DIR/plan-prompt.txt"
 
-          RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
+          SCHEMA='{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"string"}}},"required":["tasks"]}'
+          RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/plan-result.json"
 
-          TASKS=$(echo "$RESULT" | jq -r '.result // . | if type == "object" then .tasks else . end // []' 2>/dev/null || echo "[]")
-          echo "tasks=$(echo "$TASKS" | jq -c .)" >> $GITHUB_OUTPUT
+          TASKS=$(jq -c '.structured_output.tasks // []' "$WORK_DIR/plan-result.json" 2>/dev/null || echo "[]")
+          echo "tasks=$TASKS" >> $GITHUB_OUTPUT
 
       - name: "ready → create branch and draft PR"
         if: steps.state.outputs.state == 'ready' && steps.state.outputs.pr_number == '' && steps.plan.outputs.tasks != '[]' && steps.repo-config.outputs.create_prs != 'false'
@@ -625,10 +625,11 @@ jobs:
             echo 'If question:  {"status": "question", "text": "Your question", "context": "Relevant code context"}'
           } > "$WORK_DIR/implement-prompt.txt"
 
-          RESULT=$(claude --dangerously-skip-permissions --output-format json -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
+          SCHEMA='{"type":"object","properties":{"status":{"type":"string","enum":["completed","blocked","question"]},"summary":{"type":"string"},"reason":{"type":"string"},"suggestion":{"type":"string"},"text":{"type":"string"},"context":{"type":"string"}},"required":["status"]}'
+          RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/implement-result.json"
 
-          STATUS=$(echo "$RESULT" | jq -r '.result | fromjson? | .status // "error"' 2>/dev/null || echo "error")
+          STATUS=$(jq -r '.structured_output.status // "error"' "$WORK_DIR/implement-result.json" 2>/dev/null || echo "error")
           case "$STATUS" in
             completed|blocked|question) ;;
             *) STATUS="error" ;;
@@ -656,7 +657,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.state.outputs.pr_number }}
         run: |
-          SUMMARY=$(jq -r '.result // . | if type == "object" then .summary else . end // "Task completed."' "$WORK_DIR/implement-result.json" 2>/dev/null)
+          SUMMARY=$(jq -r '.structured_output.summary // "Task completed."' "$WORK_DIR/implement-result.json" 2>/dev/null)
           TODO="${{ steps.implement.outputs.todo }}"
 
           # Check if all todos are now done
@@ -689,14 +690,14 @@ jobs:
         run: |
           OUTCOME="${{ steps.implement.outputs.outcome }}"
           if [[ "$OUTCOME" == "blocked" ]]; then
-            REASON=$(jq -r '.result // . | if type == "object" then .reason else . end // "Blocked."' "$WORK_DIR/implement-result.json" 2>/dev/null)
-            SUGGESTION=$(jq -r '.result // . | if type == "object" then .suggestion else . end // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
+            REASON=$(jq -r '.structured_output.reason // "Blocked."' "$WORK_DIR/implement-result.json" 2>/dev/null)
+            SUGGESTION=$(jq -r '.structured_output.suggestion // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
             BODY="🤖 **Auto-dev** — ⊘ Blocked: $REASON"
             [[ -n "$SUGGESTION" ]] && BODY=$(printf '%s\n%s' "$BODY" "Suggestion: $SUGGESTION")
             gh pr comment "$PR_NUMBER" --body "$BODY"
           else
-            QUESTION=$(jq -r '.result // . | if type == "object" then .text else . end // "Question."' "$WORK_DIR/implement-result.json" 2>/dev/null)
-            CONTEXT=$(jq -r '.result // . | if type == "object" then .context else . end // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
+            QUESTION=$(jq -r '.structured_output.text // "Question."' "$WORK_DIR/implement-result.json" 2>/dev/null)
+            CONTEXT=$(jq -r '.structured_output.context // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
             BODY="🤖 **Auto-dev** — ❓ $QUESTION"
             [[ -n "$CONTEXT" ]] && BODY=$(printf '%s\n%s' "$BODY" "Context: $CONTEXT")
             gh pr comment "$PR_NUMBER" --body "$BODY"
