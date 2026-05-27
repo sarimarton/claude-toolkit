@@ -20,6 +20,7 @@ HOME_DIR="{{home}}"
 RUNNERS_DIR="$HOME_DIR/.config/claude-toolkit/runners"
 WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev.yml"
 LABEL_WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-label.yml"
+PM_WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-pm.yml"
 STATE_DIR="$HOME_DIR/Documents/state/claude-toolkit/auto-dev"
 
 # ── Args ──────────────────────────────────────────────
@@ -138,11 +139,12 @@ WORKFLOW_DIR="$LOCAL_PATH/.github/workflows"
 mkdir -p "$WORKFLOW_DIR"
 cp "$WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev.yml"
 cp "$LABEL_WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-label.yml"
+cp "$PM_WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-pm.yml"
 
 # ── Step 5: Commit and push workflows ─────────────────
 echo "→ Committing workflows..."
 cd "$LOCAL_PATH"
-git add .github/workflows/auto-dev.yml .github/workflows/auto-dev-label.yml
+git add .github/workflows/auto-dev.yml .github/workflows/auto-dev-label.yml .github/workflows/auto-dev-pm.yml
 if git diff --cached --quiet; then
   echo "  Workflows already up to date, no new commit needed."
 else

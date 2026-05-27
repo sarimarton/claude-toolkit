@@ -1,0 +1,360 @@
+name: Auto-dev PM
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # Every 6 hours
+  workflow_dispatch:
+    inputs:
+      user_message:
+        description: "Message or instruction to the PM agent (optional)"
+        required: false
+        type: string
+      skip_usage_check:
+        description: "Skip the Claude usage threshold check"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: auto-dev-pm
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  # ════════════════════════════════════════════════════════════
+  # Job 1: Check Claude usage budget
+  # ════════════════════════════════════════════════════════════
+  check-usage:
+    runs-on: [self-hosted]
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - name: Check Claude tier usage bucket
+        id: check
+        run: |
+          if [[ "${{ inputs.skip_usage_check }}" == "true" ]]; then
+            echo "skip_usage_check requested — bypassing threshold"
+            echo "ok=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          GLOBAL_CONFIG="$HOME/.config/claude-toolkit/global.json"
+          BAILOUT_PCT=$(jq -r '.bailout_pct // empty' "$GLOBAL_CONFIG" 2>/dev/null | head -n 1)
+          BAILOUT_PCT="${BAILOUT_PCT:-50}"
+
+          USAGE_FILE="/tmp/claude-usage.json"
+          if [[ ! -f "$USAGE_FILE" ]]; then
+            echo "Usage file not found — assuming bucket available"
+            echo "ok=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          PCT=$(python3 -c "import json; d=json.load(open('$USAGE_FILE')); print(d.get('pct', 0))" 2>/dev/null || echo "0")
+          echo "Current usage: ${PCT}%  (threshold: ${BAILOUT_PCT}%)"
+
+          if (( PCT >= BAILOUT_PCT )); then
+            echo "Usage too high (${PCT}% >= ${BAILOUT_PCT}%) — skipping this run"
+            echo "ok=false" >> $GITHUB_OUTPUT
+          else
+            echo "ok=true" >> $GITHUB_OUTPUT
+          fi
+
+  # ════════════════════════════════════════════════════════════
+  # Job 2: PM agent run
+  # ════════════════════════════════════════════════════════════
+  pm:
+    needs: check-usage
+    if: needs.check-usage.outputs.ok == 'true'
+    runs-on: [self-hosted]
+
+    env:
+      WORK_DIR: /tmp/auto-dev-pm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Extend PATH for self-hosted runner
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Ensure PM label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create "ai"       --color "1d76db" --description "Auto-dev: pool identifier"   --force
+          gh label create "ai:epic"  --color "e99695" --description "Auto-dev: epic/kickoff"      --force
+          gh label create "ai:ready" --color "0e8a16" --description "Auto-dev: ready for PR"      --force
+
+      - name: Collect repo state
+        id: collect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p "$WORK_DIR"
+
+          # All open issues with full comment thread
+          gh issue list \
+            --state open \
+            --json number,title,body,labels,comments,createdAt,updatedAt \
+            --limit 100 \
+            > "$WORK_DIR/issues.json"
+
+          # All open PRs with full comment thread
+          gh pr list \
+            --state open \
+            --json number,title,body,labels,comments,createdAt,updatedAt,headRefName \
+            --limit 50 \
+            > "$WORK_DIR/prs.json"
+
+          # Recent activity (last 20 entries for this repo)
+          STATE_DIR="$HOME/Documents/state/claude-toolkit/auto-dev"
+          ACTIVITY_LOG="$STATE_DIR/activity.jsonl"
+          RECENT_ACTIVITY=""
+          if [[ -f "$ACTIVITY_LOG" ]]; then
+            RECENT_ACTIVITY=$(grep "\"$GH_REPO\"" "$ACTIVITY_LOG" 2>/dev/null | tail -20 || true)
+          fi
+          printf '%s\n' "$RECENT_ACTIVITY" > "$WORK_DIR/activity.txt"
+
+          ISSUE_COUNT=$(jq 'length' "$WORK_DIR/issues.json")
+          PR_COUNT=$(jq 'length' "$WORK_DIR/prs.json")
+          echo "Collected $ISSUE_COUNT open issues, $PR_COUNT open PRs"
+
+      - name: Run PM agent with Claude
+        id: pm_agent
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          USER_MESSAGE: ${{ inputs.user_message }}
+        run: |
+          ISSUES=$(cat "$WORK_DIR/issues.json")
+          PRS=$(cat "$WORK_DIR/prs.json")
+          ACTIVITY=$(cat "$WORK_DIR/activity.txt")
+
+          ARCH_CONTEXT=""
+          [[ -f "ARCHITECTURE.md" ]] && ARCH_CONTEXT=$(cat ARCHITECTURE.md)
+          README_CONTEXT=""
+          [[ -f "README.md" ]] && README_CONTEXT=$(cat README.md)
+
+          {
+            echo "You are the **PM agent** for this GitHub repository."
+            echo "Your role: high-level project management — backlog health, communication, and documentation."
+            echo "You do NOT implement code. The auto-dev workflow handles implementation."
+            echo ""
+            echo "## Your responsibilities"
+            echo ""
+            echo "1. **Backlog health** — Review all open issues and PRs. Identify:"
+            echo "   - Issues that are stuck (blocked, no activity for days, unclear)"
+            echo "   - Issues that need splitting (too large for one PR)"
+            echo "   - Missing sub-tasks that should be created"
+            echo "   - Issues that can be closed (already done via a PR)"
+            echo ""
+            echo "2. **Course correction** — Read ALL issue and PR comments carefully."
+            echo "   - If the repo owner (non-bot) left comments with instructions, feedback, or concerns, act on them."
+            echo "   - Respond to questions, adjust labels, create clarification issues as needed."
+            echo "   - Bot comments are marked 🤖 **Auto-dev** — owner comments are not."
+            echo ""
+            echo "3. **README** — If README.md is missing or empty (stub only), write one."
+            echo "   - Base it on ARCHITECTURE.md, open issues, and your understanding of the codebase."
+            echo "   - A good README has: purpose, quick start, key concepts, links to issues."
+            echo "   - Only write README if it adds real value (skip if already substantive)."
+            echo ""
+            echo "4. **User message** — If a user_message was provided, treat it as a priority instruction."
+            echo "   It may ask you to create issues, reprioritize, comment on a PR, or anything else."
+            echo ""
+            echo "## Actions you can take"
+            echo ""
+            echo "Return a JSON object with an 'actions' array. Each action has a 'type' and type-specific fields:"
+            echo ""
+            echo '- Create issue:   {"type":"create_issue","title":"...","body":"...","labels":["ai"]}'
+            echo '- Comment issue:  {"type":"comment_issue","number":123,"body":"..."}'
+            echo '- Comment PR:     {"type":"comment_pr","number":123,"body":"..."}'
+            echo '- Add label:      {"type":"add_label","target":"issue","number":123,"label":"ai:blocked"}'
+            echo '- Remove label:   {"type":"remove_label","target":"issue","number":123,"label":"ai:ready"}'
+            echo '- Write README:   {"type":"write_readme","content":"full README.md content in Markdown"}'
+            echo '- No action:      {"type":"noop","reason":"Everything looks healthy"}'
+            echo ""
+            echo "RULES:"
+            echo "- Take the minimum necessary actions. Don't create issues for things already covered."
+            echo "- Always include a 'noop' if you have no meaningful action to take."
+            echo "- Comments must be written in the same language as the issue/PR they respond to."
+            echo "- For 'write_readme': only include if README.md is missing or a stub."
+            echo "- For 'create_issue': always include the 'ai' label so auto-dev picks it up."
+            echo "- Do not create issues that duplicate existing open issues."
+            echo ""
+            if [[ -n "$USER_MESSAGE" ]]; then
+              echo "## User instruction (PRIORITY)"
+              echo ""
+              printf '%s\n' "$USER_MESSAGE"
+              echo ""
+            fi
+            echo "## Current repo state"
+            echo ""
+            if [[ -n "$ARCH_CONTEXT" ]]; then
+              echo "### ARCHITECTURE.md"
+              echo ""
+              printf '%s\n' "$ARCH_CONTEXT"
+              echo ""
+            fi
+            echo "### README.md"
+            echo ""
+            if [[ -n "$README_CONTEXT" ]]; then
+              printf '%s\n' "$README_CONTEXT"
+            else
+              echo "(missing)"
+            fi
+            echo ""
+            echo "### Open issues (with comments)"
+            echo ""
+            printf '%s\n' "$ISSUES"
+            echo ""
+            echo "### Open PRs (with comments)"
+            echo ""
+            printf '%s\n' "$PRS"
+            echo ""
+            echo "### Recent activity log"
+            echo ""
+            if [[ -n "$ACTIVITY" ]]; then
+              printf '%s\n' "$ACTIVITY"
+            else
+              echo "(no activity yet)"
+            fi
+          } > "$WORK_DIR/pm-prompt.txt"
+
+          SCHEMA='{
+            "type": "object",
+            "properties": {
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {"type":"string","enum":["create_issue","comment_issue","comment_pr","add_label","remove_label","write_readme","noop"]},
+                    "title":   {"type":"string"},
+                    "body":    {"type":"string"},
+                    "content": {"type":"string"},
+                    "labels":  {"type":"array","items":{"type":"string"}},
+                    "number":  {"type":"integer"},
+                    "target":  {"type":"string","enum":["issue","pr"]},
+                    "label":   {"type":"string"},
+                    "reason":  {"type":"string"}
+                  },
+                  "required": ["type"]
+                }
+              }
+            },
+            "required": ["actions"]
+          }'
+
+          RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/pm-prompt.txt")" 2>"$WORK_DIR/pm-stderr.txt") || true
+          echo "$RESULT" > "$WORK_DIR/pm-result.json"
+
+          ACTION_COUNT=$(jq '.structured_output.actions | length' "$WORK_DIR/pm-result.json" 2>/dev/null || echo "0")
+          echo "PM agent returned $ACTION_COUNT action(s)"
+          echo "action_count=$ACTION_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Execute PM actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ACTIONS=$(jq -c '.structured_output.actions // []' "$WORK_DIR/pm-result.json" 2>/dev/null || echo "[]")
+          ACTION_COUNT=$(echo "$ACTIONS" | jq 'length')
+          echo "Executing $ACTION_COUNT action(s)..."
+
+          README_WRITTEN=false
+
+          for i in $(seq 0 $((ACTION_COUNT - 1))); do
+            ACTION=$(echo "$ACTIONS" | jq -c ".[$i]")
+            TYPE=$(echo "$ACTION" | jq -r '.type')
+            echo "Action $((i+1))/$ACTION_COUNT: $TYPE"
+
+            case "$TYPE" in
+
+              create_issue)
+                TITLE=$(echo "$ACTION" | jq -r '.title // "Untitled"')
+                BODY=$(echo "$ACTION"  | jq -r '.body // ""')
+                LABELS=$(echo "$ACTION" | jq -r '(.labels // ["ai"]) | join(",")')
+                gh issue create \
+                  --title "$TITLE" \
+                  --body "$(printf '%s\n\n%s' "$BODY" '<!-- auto-dev:pm -->')" \
+                  --label "$LABELS" \
+                  && echo "  Created issue: $TITLE"
+                ;;
+
+              comment_issue)
+                NUM=$(echo "$ACTION" | jq -r '.number')
+                BODY=$(echo "$ACTION" | jq -r '.body // ""')
+                gh issue comment "$NUM" \
+                  --body "$(printf '%s\n\n%s' "$BODY" '<!-- auto-dev:pm -->')" \
+                  && echo "  Commented on issue #$NUM"
+                ;;
+
+              comment_pr)
+                NUM=$(echo "$ACTION" | jq -r '.number')
+                BODY=$(echo "$ACTION" | jq -r '.body // ""')
+                gh pr comment "$NUM" \
+                  --body "$(printf '%s\n\n%s' "$BODY" '<!-- auto-dev:pm -->')" \
+                  && echo "  Commented on PR #$NUM"
+                ;;
+
+              add_label)
+                NUM=$(echo "$ACTION"    | jq -r '.number')
+                TARGET=$(echo "$ACTION" | jq -r '.target // "issue"')
+                LABEL=$(echo "$ACTION"  | jq -r '.label')
+                if [[ "$TARGET" == "pr" ]]; then
+                  gh pr edit "$NUM" --add-label "$LABEL" && echo "  Added label '$LABEL' to PR #$NUM"
+                else
+                  gh issue edit "$NUM" --add-label "$LABEL" && echo "  Added label '$LABEL' to issue #$NUM"
+                fi
+                ;;
+
+              remove_label)
+                NUM=$(echo "$ACTION"    | jq -r '.number')
+                TARGET=$(echo "$ACTION" | jq -r '.target // "issue"')
+                LABEL=$(echo "$ACTION"  | jq -r '.label')
+                if [[ "$TARGET" == "pr" ]]; then
+                  gh pr edit "$NUM" --remove-label "$LABEL" && echo "  Removed label '$LABEL' from PR #$NUM"
+                else
+                  gh issue edit "$NUM" --remove-label "$LABEL" && echo "  Removed label '$LABEL' from issue #$NUM"
+                fi
+                ;;
+
+              write_readme)
+                CONTENT=$(echo "$ACTION" | jq -r '.content // ""')
+                if [[ -n "$CONTENT" ]]; then
+                  printf '%s\n' "$CONTENT" > README.md
+                  git add README.md
+                  git commit -m "docs: write README.md [auto-dev-pm]"
+                  git push
+                  README_WRITTEN=true
+                  echo "  README.md written and pushed"
+                fi
+                ;;
+
+              noop)
+                REASON=$(echo "$ACTION" | jq -r '.reason // "No action needed"')
+                echo "  No-op: $REASON"
+                ;;
+
+              *)
+                echo "  Unknown action type: $TYPE — skipping"
+                ;;
+            esac
+          done
+
+          echo "PM actions complete."

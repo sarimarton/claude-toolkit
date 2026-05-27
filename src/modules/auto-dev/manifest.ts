@@ -78,6 +78,18 @@ export const manifest: ModuleManifest = {
       filename: 'auto-dev-global-config.sh',
       executable: true,
     },
+    {
+      source: 'auto-dev-pm.yml.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-pm.yml',
+      executable: false,
+    },
+    {
+      source: 'auto-dev-pm-run.sh.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-pm-run.sh',
+      executable: true,
+    },
   ],
   postInstall: 'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository."',
 };
