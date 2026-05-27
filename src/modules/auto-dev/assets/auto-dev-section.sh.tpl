@@ -135,7 +135,7 @@ if [[ -n "$MANAGED_REPOS" ]]; then
 
         # Recent cycles
         if [[ -f "$ACTIVITY_LOG" ]]; then
-            ENTRIES=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -5 | tac)
+            ENTRIES=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -5 | awk '{lines[NR]=$0} END{for(i=NR;i>=1;i--) print lines[i]}')
             if [[ -n "$ENTRIES" ]]; then
                 echo "--Recent cycles | size=11 color=#888888"
                 while IFS= read -r ENTRY; do

@@ -45,10 +45,12 @@ if [[ "$ACTION" == "list" ]]; then
   fi
   for dir in "$RUNNERS_DIR"/*/; do
     [[ -d "$dir" ]] || continue
-    slug="${dir%/}"
-    slug="${slug##*/}"
-    # Reconstruct owner/repo from slug (first dash = separator)
-    repo="${slug/-//}"
+    if [[ -f "${dir}.repo-name" ]]; then
+      repo=$(cat "${dir}.repo-name")
+    else
+      slug="${dir%/}"; slug="${slug##*/}"
+      repo="${slug/-//}"
+    fi
     sess=$(session_name "$repo")
     if $TMUX_BIN has-session -t "$sess" 2>/dev/null; then
       echo "$repo  running  (session: $sess)"

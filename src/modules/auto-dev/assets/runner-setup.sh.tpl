@@ -81,7 +81,7 @@ echo ""
 
 # ── Step 1: Registration token ────────────────────────
 echo "→ Getting runner registration token..."
-REG_TOKEN=$(gh api -X POST "repos/$REPO/actions/runners/registration-token" --jq '.token')
+REG_TOKEN=$(gh api -X POST "repos/$REPO/actions/runners/registration-token" 2>/dev/null | jq -r '.token' | head -n 1)
 if [[ -z "$REG_TOKEN" ]]; then
   echo "Error: failed to get registration token. Is 'gh auth login' done and do you have admin access?"
   exit 1
@@ -89,6 +89,7 @@ fi
 
 # ── Step 2: Download runner binary ────────────────────
 mkdir -p "$RUNNER_DIR"
+echo "$REPO" > "$RUNNER_DIR/.repo-name"
 
 if [[ ! -f "$RUNNER_DIR/run.sh" ]]; then
   echo "→ Downloading GitHub Actions runner..."
@@ -99,7 +100,7 @@ if [[ ! -f "$RUNNER_DIR/run.sh" ]]; then
     RUNNER_ARCH="x64"
   fi
 
-  LATEST=$(gh api /repos/actions/runner/releases/latest --jq '.tag_name' | tr -d 'v')
+  LATEST=$(gh api /repos/actions/runner/releases/latest 2>/dev/null | jq -r '.tag_name' | head -n 1 | tr -d 'v')
   RUNNER_PKG="actions-runner-osx-${RUNNER_ARCH}-${LATEST}.tar.gz"
   RUNNER_URL="https://github.com/actions/runner/releases/download/v${LATEST}/${RUNNER_PKG}"
 

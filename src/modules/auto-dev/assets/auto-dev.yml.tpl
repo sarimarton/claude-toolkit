@@ -564,7 +564,7 @@ jobs:
           echo "tasks=$TASKS" >> $GITHUB_OUTPUT
 
       - name: "ready → create branch and draft PR"
-        if: steps.state.outputs.state == 'ready' && steps.state.outputs.pr_number == '' && steps.plan.outputs.tasks != '[]' && steps.repo-config.outputs.create_prs != 'false'
+        if: steps.state.outputs.state == 'ready' && steps.state.outputs.pr_number == '' && steps.plan.outputs.tasks != '' && steps.plan.outputs.tasks != '[]' && steps.repo-config.outputs.create_prs != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -781,8 +781,15 @@ jobs:
           STATE="${{ steps.state.outputs.state }}"
           MODEL="${{ steps.state.outputs.model }}"
           PR_NUM="${{ steps.state.outputs.pr_number }}"
-          TODO="${{ steps.implement.outputs.todo || '' }}"
-          OUTCOME="${{ steps.implement.outputs.outcome || steps.evaluate.outputs.decision || steps.plan.outputs.tasks != '[]' && 'pr_created' || 'skipped' }}"
+          TODO="${{ steps.implement.outputs.todo }}"
+          _IMPL="${{ steps.implement.outputs.outcome }}"
+          _EVAL="${{ steps.evaluate.outputs.decision }}"
+          _PLAN="${{ steps.plan.outputs.tasks }}"
+          if [[ -n "$_IMPL" ]]; then OUTCOME="$_IMPL"
+          elif [[ -n "$_EVAL" ]]; then OUTCOME="$_EVAL"
+          elif [[ -n "$_PLAN" && "$_PLAN" != "[]" ]]; then OUTCOME="pr_created"
+          else OUTCOME="skipped"
+          fi
           TS=$(date +%s)
           DURATION=$(( TS - $(date -d @"${ACTIONS_STEP_DEBUG_START:-$TS}" +%s 2>/dev/null || echo "$TS") ))
 
