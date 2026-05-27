@@ -232,13 +232,22 @@ jobs:
             echo ""
             echo "Return a JSON object with an 'actions' array. Each action has a 'type' and type-specific fields:"
             echo ""
-            echo '- Create issue:   {"type":"create_issue","title":"...","body":"...","labels":["ai"]}'
-            echo '- Comment issue:  {"type":"comment_issue","number":123,"body":"..."}'
-            echo '- Comment PR:     {"type":"comment_pr","number":123,"body":"..."}'
-            echo '- Add label:      {"type":"add_label","target":"issue","number":123,"label":"ai:blocked"}'
-            echo '- Remove label:   {"type":"remove_label","target":"issue","number":123,"label":"ai:ready"}'
-            echo '- Write README:   {"type":"write_readme","content":"full README.md content in Markdown"}'
-            echo '- No action:      {"type":"noop","reason":"Everything looks healthy"}'
+            echo "Each action must have a 'rationale' field: 1-2 sentences in Hungarian explaining WHY."
+            echo ""
+            echo '- Create issue:   {"type":"create_issue","title":"...","body":"...","labels":["ai"],"rationale":"..."}'
+            echo '- Comment issue:  {"type":"comment_issue","number":123,"body":"...","rationale":"..."}'
+            echo '- Comment PR:     {"type":"comment_pr","number":123,"body":"...","rationale":"..."}'
+            echo '- Add label:      {"type":"add_label","target":"issue","number":123,"label":"ai:blocked","rationale":"..."}'
+            echo '- Remove label:   {"type":"remove_label","target":"issue","number":123,"label":"ai:ready","rationale":"..."}'
+            echo '- Write README:   {"type":"write_readme","content":"full README.md content in Markdown","rationale":"..."}'
+            echo '- No action:      {"type":"noop","rationale":"Everything looks healthy"}'
+            echo ""
+            echo "Also include at the top level:"
+            echo '- "summary": one-line summary in Hungarian (max 80 chars) — shown in menubar.'
+            echo '- "report": markdown report in Hungarian — shown in GitHub Actions step summary.'
+            echo "   Include: what you considered, what you decided to do and why, what you intentionally"
+            echo "   skipped (e.g. 'majdnem kommenteltem #12-re, de a user kérdése még friss, hagyom'),"
+            echo "   any concerns or things to watch."
             echo ""
             echo "RULES:"
             echo "- Take the minimum necessary actions. Don't create issues for things already covered."
@@ -298,26 +307,28 @@ jobs:
           SCHEMA='{
             "type": "object",
             "properties": {
+              "summary": {"type":"string"},
+              "report":  {"type":"string"},
               "actions": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "properties": {
                     "type": {"type":"string","enum":["create_issue","comment_issue","comment_pr","add_label","remove_label","write_readme","noop"]},
-                    "title":   {"type":"string"},
-                    "body":    {"type":"string"},
-                    "content": {"type":"string"},
-                    "labels":  {"type":"array","items":{"type":"string"}},
-                    "number":  {"type":"integer"},
-                    "target":  {"type":"string","enum":["issue","pr"]},
-                    "label":   {"type":"string"},
-                    "reason":  {"type":"string"}
+                    "title":     {"type":"string"},
+                    "body":      {"type":"string"},
+                    "content":   {"type":"string"},
+                    "labels":    {"type":"array","items":{"type":"string"}},
+                    "number":    {"type":"integer"},
+                    "target":    {"type":"string","enum":["issue","pr"]},
+                    "label":     {"type":"string"},
+                    "rationale": {"type":"string"}
                   },
-                  "required": ["type"]
+                  "required": ["type","rationale"]
                 }
               }
             },
-            "required": ["actions"]
+            "required": ["summary","report","actions"]
           }'
 
           RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/pm-prompt.txt")" 2>"$WORK_DIR/pm-stderr.txt") || true
@@ -407,8 +418,8 @@ jobs:
                 ;;
 
               noop)
-                REASON=$(echo "$ACTION" | jq -r '.reason // "No action needed"')
-                echo "  No-op: $REASON"
+                R=$(echo "$ACTION" | jq -r '.rationale // "No action needed"')
+                echo "  No-op: $R"
                 ;;
 
               *)
@@ -418,6 +429,58 @@ jobs:
           done
 
           echo "PM actions complete."
+
+      - name: Write step summary and activity log
+        if: always() && steps.pm_agent.outcome == 'success'
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          SUMMARY=$(jq -r '.structured_output.summary // "(no summary)"' "$WORK_DIR/pm-result.json" 2>/dev/null)
+          REPORT=$(jq -r '.structured_output.report // "(no report)"' "$WORK_DIR/pm-result.json" 2>/dev/null)
+          ACTIONS=$(jq -c '.structured_output.actions // []' "$WORK_DIR/pm-result.json" 2>/dev/null || echo "[]")
+          ACTION_COUNT=$(echo "$ACTIONS" | jq 'length')
+
+          # ── GitHub Actions step summary ───────────────────
+          {
+            echo "# 🤖 PM Agent — $(date -u +"%Y-%m-%d %H:%M UTC")"
+            echo ""
+            echo "**$SUMMARY**"
+            echo ""
+            echo "## Report"
+            echo ""
+            printf '%s\n' "$REPORT"
+            echo ""
+            echo "## Actions ($ACTION_COUNT)"
+            echo ""
+            for i in $(seq 0 $((ACTION_COUNT - 1))); do
+              A=$(echo "$ACTIONS" | jq -c ".[$i]")
+              T=$(echo "$A" | jq -r '.type')
+              R=$(echo "$A" | jq -r '.rationale // ""')
+              case "$T" in
+                create_issue)  DETAIL=$(echo "$A" | jq -r '.title // ""') ;;
+                comment_issue) DETAIL="#$(echo "$A" | jq -r '.number')" ;;
+                comment_pr)    DETAIL="PR #$(echo "$A" | jq -r '.number')" ;;
+                add_label|remove_label) DETAIL="$(echo "$A" | jq -r '.target')#$(echo "$A" | jq -r '.number') — $(echo "$A" | jq -r '.label')" ;;
+                write_readme)  DETAIL="README.md" ;;
+                noop)          DETAIL="" ;;
+                *)             DETAIL="(unknown)" ;;
+              esac
+              echo "- **$T** $DETAIL"
+              [[ -n "$R" ]] && echo "  - _${R}_"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # ── activity.jsonl for menubar ────────────────────
+          STATE_DIR="$HOME/Documents/state/claude-toolkit/auto-dev"
+          mkdir -p "$STATE_DIR"
+          TS=$(date +%s)
+          jq -nc \
+            --arg ts "$TS" \
+            --arg repo "$GH_REPO" \
+            --arg summary "$SUMMARY" \
+            --argjson count "$ACTION_COUNT" \
+            '{ts: ($ts|tonumber), repo: $repo, agent: "pm", actions: $count, summary: $summary}' \
+            >> "$STATE_DIR/activity.jsonl"
 
       - name: Save cursor
         if: success()

@@ -140,9 +140,24 @@ if [[ -n "$MANAGED_REPOS" ]]; then
                 echo "--Recent cycles | size=11 color=#888888"
                 while IFS= read -r ENTRY; do
                     [[ -z "$ENTRY" ]] && continue
+                    AGENT=$($JQ -r '.agent // "auto-dev"' 2>/dev/null <<< "$ENTRY")
+                    ENTRY_TS=$($JQ -r '.ts // 0' 2>/dev/null <<< "$ENTRY")
+
+                    AGE_MIN=$(( ($(date +%s) - ENTRY_TS) / 60 ))
+                    if   (( AGE_MIN < 60 ));   then AGE="${AGE_MIN}m"
+                    elif (( AGE_MIN < 1440 )); then AGE="$(( AGE_MIN / 60 ))h"
+                    else                            AGE="$(( AGE_MIN / 1440 ))d"
+                    fi
+
+                    if [[ "$AGENT" == "pm" ]]; then
+                        PM_SUMMARY=$($JQ -r '.summary // ""' 2>/dev/null <<< "$ENTRY" | cut -c1-50)
+                        PM_COUNT=$($JQ -r '.actions // 0' 2>/dev/null <<< "$ENTRY")
+                        echo "--📋 $AGE PM: ${PM_SUMMARY:-(no summary)} ($PM_COUNT) | color=#bf5af2 size=12 href=https://github.com/$REPO/actions/workflows/auto-dev-pm.yml"
+                        continue
+                    fi
+
                     OUTCOME=$($JQ -r '.outcome // "?"' 2>/dev/null <<< "$ENTRY")
                     TODO=$($JQ -r '.todo // ""' 2>/dev/null <<< "$ENTRY" | cut -c1-35)
-                    ENTRY_TS=$($JQ -r '.ts // 0' 2>/dev/null <<< "$ENTRY")
                     MODEL=$($JQ -r '.model // ""' 2>/dev/null <<< "$ENTRY" | sed 's/claude-//' | sed 's/-[0-9].*//')
                     PR_REF=$($JQ -r '.pr // ""' 2>/dev/null <<< "$ENTRY")
 
@@ -153,12 +168,6 @@ if [[ -n "$MANAGED_REPOS" ]]; then
                         crash)     ICON="✗"; COLOR="#ff453a" ;;
                         *)         ICON="·"; COLOR="#888888" ;;
                     esac
-
-                    AGE_MIN=$(( ($(date +%s) - ENTRY_TS) / 60 ))
-                    if   (( AGE_MIN < 60 ));   then AGE="${AGE_MIN}m"
-                    elif (( AGE_MIN < 1440 )); then AGE="$(( AGE_MIN / 60 ))h"
-                    else                            AGE="$(( AGE_MIN / 1440 ))d"
-                    fi
 
                     DISPLAY="$ICON $AGE ${TODO:-(no todo)}"
                     [[ -n "$MODEL" ]] && DISPLAY="$DISPLAY [$MODEL]"
