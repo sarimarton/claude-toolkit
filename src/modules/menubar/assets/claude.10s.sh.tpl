@@ -18,6 +18,20 @@
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
+# ── Short-lived output cache — eliminates click-open lag ──
+# SwiftBar runs this script every 10s (background) + on dropdown open (blocking).
+# Serving the 10s-old cached output on click makes the menu appear instantly.
+_MENU_CACHE="/tmp/claude-menu-raw.txt"
+_MENU_CACHE_TTL=9
+if [[ -f "$_MENU_CACHE" ]]; then
+    _cache_age=$(( $(date +%s) - $(stat -f %m "$_MENU_CACHE" 2>/dev/null || echo 0) ))
+    if (( _cache_age < _MENU_CACHE_TTL )); then
+        cat "$_MENU_CACHE"
+        exit 0
+    fi
+fi
+exec > >(tee "$_MENU_CACHE.tmp"; mv "$_MENU_CACHE.tmp" "$_MENU_CACHE")
+
 POLL_SCRIPT="{{scripts_dir}}/claude-usage-poll.sh"
 TMUX_BIN={{tmux}}
 HELPERS="{{scripts_dir}}"

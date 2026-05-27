@@ -77,14 +77,15 @@ if [[ -n "$MANAGED_REPOS" ]]; then
             RUNNER_COLOR="#ff453a"
         fi
 
-        # Last activity
-        LAST_OUTCOME="" LAST_TODO=""
+        # Last activity — parse multi-line JSONL with jq -s (one pass, all entries)
+        LAST_OUTCOME="" LAST_TODO="" REPO_ENTRIES_JSON="[]"
         if [[ -f "$ACTIVITY_LOG" ]]; then
-            LAST_ENTRY=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -1)
-            if [[ -n "$LAST_ENTRY" ]]; then
-                LAST_OUTCOME=$($JQ -r '.outcome // ""' 2>/dev/null <<< "$LAST_ENTRY")
-                LAST_TODO=$($JQ -r '.todo // ""' 2>/dev/null <<< "$LAST_ENTRY" | cut -c1-30)
-            fi
+            REPO_ENTRIES_JSON=$($JQ -sc --arg r "$REPO" \
+                '[.[] | select(.repo == $r)]' "$ACTIVITY_LOG" 2>/dev/null)
+            IFS=$'\x1f' read -r LAST_OUTCOME LAST_TODO < <(
+                $JQ -r 'last // {} | [(.outcome // ""), ((.todo // "") | .[0:30])] | join("")' \
+                    2>/dev/null <<< "$REPO_ENTRIES_JSON"
+            )
         fi
 
         case "$LAST_OUTCOME" in
@@ -97,13 +98,19 @@ if [[ -n "$MANAGED_REPOS" ]]; then
 
         # Issue status from workflow-written summary
         ISSUE_SUMMARY=""
+        CURRENT_AUTONOMY=""
         STATUS_JSON="$STATE_DIR/${REPO_SLUG}-status.json"
         if [[ -f "$STATUS_JSON" ]]; then
-            TOTAL=$($JQ -r '.issues.total // 0' "$STATUS_JSON" 2>/dev/null)
-            NEW=$($JQ -r '.issues.new // 0' "$STATUS_JSON" 2>/dev/null)
-            READY=$($JQ -r '.issues.ready // 0' "$STATUS_JSON" 2>/dev/null)
-            IN_PROG=$($JQ -r '.issues.in_progress // 0' "$STATUS_JSON" 2>/dev/null)
-            BLOCKED=$($JQ -r '.issues.blocked // 0' "$STATUS_JSON" 2>/dev/null)
+            IFS=$'\t' read -r TOTAL NEW READY IN_PROG BLOCKED CURRENT_AUTONOMY < <(
+                $JQ -r '[
+                    (.issues.total // 0 | tostring),
+                    (.issues.new // 0 | tostring),
+                    (.issues.ready // 0 | tostring),
+                    (.issues.in_progress // 0 | tostring),
+                    (.issues.blocked // 0 | tostring),
+                    (.autonomy // "")
+                ] | join("\t")' "$STATUS_JSON" 2>/dev/null
+            )
             PARTS=""
             (( NEW > 0 ))     && PARTS="${PARTS}${NEW} new · "
             (( READY > 0 ))   && PARTS="${PARTS}${READY} ready · "
@@ -133,55 +140,55 @@ if [[ -n "$MANAGED_REPOS" ]]; then
 
         echo "-----"
 
-        # Recent cycles
-        if [[ -f "$ACTIVITY_LOG" ]]; then
-            ENTRIES=$(grep "\"${REPO}\"" "$ACTIVITY_LOG" 2>/dev/null | tail -5 | awk '{lines[NR]=$0} END{for(i=NR;i>=1;i--) print lines[i]}')
-            if [[ -n "$ENTRIES" ]]; then
-                echo "--Recent cycles | size=11 color=#888888"
-                while IFS= read -r ENTRY; do
-                    [[ -z "$ENTRY" ]] && continue
-                    AGENT=$($JQ -r '.agent // "auto-dev"' 2>/dev/null <<< "$ENTRY")
-                    ENTRY_TS=$($JQ -r '.ts // 0' 2>/dev/null <<< "$ENTRY")
+        # Recent cycles — REPO_ENTRIES_JSON already loaded above (no extra jq -s)
+        _has_entries=$($JQ -r 'if length > 0 then "yes" else "no" end' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
+        if [[ "$_has_entries" == "yes" ]]; then
+            echo "--Recent cycles | size=11 color=#888888"
+            NOW_S=$(date +%s)
+            while IFS=$'\x1f' read -r AGENT ENTRY_TS OUTCOME TODO MODEL PR_REF PM_SUMMARY PM_COUNT; do
+                AGE_MIN=$(( (NOW_S - ENTRY_TS) / 60 ))
+                if   (( AGE_MIN < 60 ));   then AGE="${AGE_MIN}m"
+                elif (( AGE_MIN < 1440 )); then AGE="$(( AGE_MIN / 60 ))h"
+                else                            AGE="$(( AGE_MIN / 1440 ))d"
+                fi
 
-                    AGE_MIN=$(( ($(date +%s) - ENTRY_TS) / 60 ))
-                    if   (( AGE_MIN < 60 ));   then AGE="${AGE_MIN}m"
-                    elif (( AGE_MIN < 1440 )); then AGE="$(( AGE_MIN / 60 ))h"
-                    else                            AGE="$(( AGE_MIN / 1440 ))d"
-                    fi
+                if [[ "$AGENT" == "pm" ]]; then
+                    echo "--📋 $AGE PM: ${PM_SUMMARY:-(no summary)} ($PM_COUNT) | color=#bf5af2 size=12 href=https://github.com/$REPO/actions/workflows/auto-dev-pm.yml"
+                    continue
+                fi
 
-                    if [[ "$AGENT" == "pm" ]]; then
-                        PM_SUMMARY=$($JQ -r '.summary // ""' 2>/dev/null <<< "$ENTRY" | cut -c1-50)
-                        PM_COUNT=$($JQ -r '.actions // 0' 2>/dev/null <<< "$ENTRY")
-                        echo "--📋 $AGE PM: ${PM_SUMMARY:-(no summary)} ($PM_COUNT) | color=#bf5af2 size=12 href=https://github.com/$REPO/actions/workflows/auto-dev-pm.yml"
-                        continue
-                    fi
+                case "$OUTCOME" in
+                    completed) ICON="✓"; COLOR="#30d158" ;;
+                    blocked)   ICON="⊘"; COLOR="#ff9f0a" ;;
+                    question)  ICON="?"; COLOR="#0a84ff" ;;
+                    crash)     ICON="✗"; COLOR="#ff453a" ;;
+                    *)         ICON="·"; COLOR="#888888" ;;
+                esac
 
-                    OUTCOME=$($JQ -r '.outcome // "?"' 2>/dev/null <<< "$ENTRY")
-                    TODO=$($JQ -r '.todo // ""' 2>/dev/null <<< "$ENTRY" | cut -c1-35)
-                    MODEL=$($JQ -r '.model // ""' 2>/dev/null <<< "$ENTRY" | sed 's/claude-//' | sed 's/-[0-9].*//')
-                    PR_REF=$($JQ -r '.pr // ""' 2>/dev/null <<< "$ENTRY")
+                DISPLAY="$ICON $AGE ${TODO:-(no todo)}"
+                [[ -n "$MODEL" ]] && DISPLAY="$DISPLAY [$MODEL]"
 
-                    case "$OUTCOME" in
-                        completed) ICON="✓"; COLOR="#30d158" ;;
-                        blocked)   ICON="⊘"; COLOR="#ff9f0a" ;;
-                        question)  ICON="?"; COLOR="#0a84ff" ;;
-                        crash)     ICON="✗"; COLOR="#ff453a" ;;
-                        *)         ICON="·"; COLOR="#888888" ;;
-                    esac
-
-                    DISPLAY="$ICON $AGE ${TODO:-(no todo)}"
-                    [[ -n "$MODEL" ]] && DISPLAY="$DISPLAY [$MODEL]"
-
-                    if [[ -n "$PR_REF" ]]; then
-                        PR_URL="https://github.com/$REPO/pull/${PR_REF##*#}"
-                        echo "--$DISPLAY | color=$COLOR size=12 href=$PR_URL"
-                    else
-                        echo "--$DISPLAY | color=$COLOR size=12"
-                    fi
-                done <<< "$ENTRIES"
-            else
-                echo "--No cycles yet | size=12 color=#888888"
-            fi
+                if [[ -n "$PR_REF" ]]; then
+                    PR_URL="https://github.com/$REPO/pull/${PR_REF##*#}"
+                    echo "--$DISPLAY | color=$COLOR size=12 href=$PR_URL"
+                else
+                    echo "--$DISPLAY | color=$COLOR size=12"
+                fi
+            done < <($JQ -r '
+                .[-5:] | reverse[] |
+                [
+                    (.agent // "auto-dev"),
+                    ((.ts // 0) | tostring),
+                    (.outcome // "?"),
+                    ((.todo // "") | .[0:35]),
+                    ((.model // "") | gsub("claude-"; "") | gsub("-[0-9].*"; "")),
+                    (.pr // ""),
+                    ((.summary // "") | .[0:50]),
+                    ((.actions // 0) | tostring)
+                ] | join("\u001f")
+            ' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
+        else
+            echo "--No cycles yet | size=12 color=#888888"
         fi
 
         echo "-----"
@@ -189,8 +196,6 @@ if [[ -n "$MANAGED_REPOS" ]]; then
         echo "--Workflow runs | href=https://github.com/$REPO/actions/workflows/auto-dev.yml size=12"
         echo "--Repo | href=https://github.com/$REPO size=12"
         echo "-----"
-        CURRENT_AUTONOMY=""
-        [[ -f "$STATUS_JSON" ]] && CURRENT_AUTONOMY=$($JQ -r '.autonomy // ""' "$STATUS_JSON" 2>/dev/null)
         if [[ -n "$CURRENT_AUTONOMY" ]]; then
             echo "--Autonomy: $CURRENT_AUTONOMY | bash=$SCRIPTS_DIR/auto-dev-config.sh param1=$REPO terminal=false refresh=false size=12"
         else
