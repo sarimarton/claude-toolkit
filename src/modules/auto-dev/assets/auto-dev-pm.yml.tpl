@@ -98,27 +98,74 @@ jobs:
           gh label create "ai:epic"  --color "e99695" --description "Auto-dev: epic/kickoff"      --force
           gh label create "ai:ready" --color "0e8a16" --description "Auto-dev: ready for PR"      --force
 
+      - name: Determine cursor
+        id: cursor
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          STATE_DIR="$HOME/Documents/state/claude-toolkit/auto-dev"
+          mkdir -p "$STATE_DIR"
+          REPO_SLUG="${GH_REPO//\//-}"
+          CURSOR_FILE="$STATE_DIR/${REPO_SLUG}-pm-cursor.txt"
+
+          # Capture run start BEFORE fetching, so concurrent comments aren't lost
+          RUN_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          if [[ -f "$CURSOR_FILE" ]]; then
+            CURSOR=$(cat "$CURSOR_FILE")
+          else
+            # Initial backfill: 30 days
+            CURSOR=$(date -u -v-30d +"%Y-%m-%dT%H:%M:%SZ")
+          fi
+
+          echo "cursor=$CURSOR"           >> $GITHUB_OUTPUT
+          echo "run_start=$RUN_START"     >> $GITHUB_OUTPUT
+          echo "cursor_file=$CURSOR_FILE" >> $GITHUB_OUTPUT
+          echo "Cursor: $CURSOR  →  Run start: $RUN_START"
+
       - name: Collect repo state
         id: collect
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          CURSOR: ${{ steps.cursor.outputs.cursor }}
         run: |
           mkdir -p "$WORK_DIR"
 
-          # All open issues with full comment thread
+          # Open issues — metadata only (comments fetched separately via cursor)
           gh issue list \
             --state open \
-            --json number,title,body,labels,comments,createdAt,updatedAt \
+            --json number,title,body,labels,createdAt,updatedAt \
             --limit 100 \
             > "$WORK_DIR/issues.json"
 
-          # All open PRs with full comment thread
+          # Open PRs — metadata only
           gh pr list \
             --state open \
-            --json number,title,body,labels,comments,createdAt,updatedAt,headRefName \
+            --json number,title,body,labels,createdAt,updatedAt,headRefName \
             --limit 50 \
             > "$WORK_DIR/prs.json"
+
+          # New issue comments since cursor (issue conversation comments, not review comments)
+          gh api "repos/$GH_REPO/issues/comments?since=$CURSOR&per_page=100" \
+            | jq -c '[.[] | {
+                issue_number: (.issue_url | capture("/issues/(?<n>[0-9]+)") | .n | tonumber),
+                author: .user.login,
+                created_at: .created_at,
+                body: .body
+              }]' \
+            > "$WORK_DIR/new-issue-comments.json"
+
+          # New PR review comments since cursor
+          gh api "repos/$GH_REPO/pulls/comments?since=$CURSOR&per_page=100" \
+            | jq -c '[.[] | {
+                pr_number: (.pull_request_url | capture("/pulls/(?<n>[0-9]+)") | .n | tonumber),
+                author: .user.login,
+                created_at: .created_at,
+                path: .path,
+                body: .body
+              }]' \
+            > "$WORK_DIR/new-pr-comments.json"
 
           # Recent activity (last 20 entries for this repo)
           STATE_DIR="$HOME/Documents/state/claude-toolkit/auto-dev"
@@ -131,7 +178,9 @@ jobs:
 
           ISSUE_COUNT=$(jq 'length' "$WORK_DIR/issues.json")
           PR_COUNT=$(jq 'length' "$WORK_DIR/prs.json")
-          echo "Collected $ISSUE_COUNT open issues, $PR_COUNT open PRs"
+          NEW_IC=$(jq 'length' "$WORK_DIR/new-issue-comments.json")
+          NEW_PC=$(jq 'length' "$WORK_DIR/new-pr-comments.json")
+          echo "Collected $ISSUE_COUNT open issues, $PR_COUNT open PRs, $NEW_IC new issue comments, $NEW_PC new PR comments"
 
       - name: Run PM agent with Claude
         id: pm_agent
@@ -143,6 +192,8 @@ jobs:
         run: |
           ISSUES=$(cat "$WORK_DIR/issues.json")
           PRS=$(cat "$WORK_DIR/prs.json")
+          NEW_ISSUE_COMMENTS=$(cat "$WORK_DIR/new-issue-comments.json")
+          NEW_PR_COMMENTS=$(cat "$WORK_DIR/new-pr-comments.json")
           ACTIVITY=$(cat "$WORK_DIR/activity.txt")
 
           ARCH_CONTEXT=""
@@ -163,10 +214,11 @@ jobs:
             echo "   - Missing sub-tasks that should be created"
             echo "   - Issues that can be closed (already done via a PR)"
             echo ""
-            echo "2. **Course correction** — Read ALL issue and PR comments carefully."
-            echo "   - If the repo owner (non-bot) left comments with instructions, feedback, or concerns, act on them."
+            echo "2. **Course correction** — Read the NEW comments (since last PM run) below."
+            echo "   - These are comments you have NOT yet seen — deterministically filtered by timestamp cursor."
+            echo "   - If the repo owner (non-bot) left feedback, questions, or concerns, act on them."
             echo "   - Respond to questions, adjust labels, create clarification issues as needed."
-            echo "   - Bot comments are marked 🤖 **Auto-dev** — owner comments are not."
+            echo "   - Bot/PM comments are marked 🤖 — skip those, they are your own past output."
             echo ""
             echo "3. **README** — If README.md is missing or empty (stub only), write one."
             echo "   - Base it on ARCHITECTURE.md, open issues, and your understanding of the codebase."
@@ -218,13 +270,21 @@ jobs:
               echo "(missing)"
             fi
             echo ""
-            echo "### Open issues (with comments)"
+            echo "### Open issues (metadata, no comments)"
             echo ""
             printf '%s\n' "$ISSUES"
             echo ""
-            echo "### Open PRs (with comments)"
+            echo "### Open PRs (metadata, no comments)"
             echo ""
             printf '%s\n' "$PRS"
+            echo ""
+            echo "### NEW issue comments since last PM run (act on these)"
+            echo ""
+            printf '%s\n' "$NEW_ISSUE_COMMENTS"
+            echo ""
+            echo "### NEW PR review comments since last PM run (act on these)"
+            echo ""
+            printf '%s\n' "$NEW_PR_COMMENTS"
             echo ""
             echo "### Recent activity log"
             echo ""
@@ -358,3 +418,12 @@ jobs:
           done
 
           echo "PM actions complete."
+
+      - name: Save cursor
+        if: success()
+        env:
+          CURSOR_FILE: ${{ steps.cursor.outputs.cursor_file }}
+          RUN_START: ${{ steps.cursor.outputs.run_start }}
+        run: |
+          echo "$RUN_START" > "$CURSOR_FILE"
+          echo "Updated PM cursor to $RUN_START"
