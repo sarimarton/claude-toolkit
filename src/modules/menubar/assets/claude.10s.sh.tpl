@@ -516,6 +516,11 @@ fi
 echo "---"
 echo "Tools"
 echo "-- Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
+if [[ -f "$HELPERS/auto-dev-install.sh" ]]; then
+  echo "-- Auto-dev"
+  echo "---- Install Auto-dev to repo… | bash=$HELPERS/auto-dev-install.sh terminal=false refresh=false"
+  echo "---- Global config… | bash=$HELPERS/auto-dev-global-config.sh terminal=false refresh=false"
+fi
 echo "-- View logs | bash=/usr/bin/open param1=-R param2=$HOME_DIR/.local/share/claude-usage/ terminal=false"
 if $MULTI_ACCOUNT; then
     echo "-- Stop all monitors | bash=/usr/bin/env param1=bash param2=-c param3=\"$TMUX_BIN ls -F '#{session_name}' 2>/dev/null | grep '^claude_usage_mon' | xargs -I{} $TMUX_BIN kill-session -t {}\" terminal=false refresh=true"
