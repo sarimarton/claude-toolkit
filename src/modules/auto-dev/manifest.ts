@@ -87,9 +87,9 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
       executable: true,
     },
     {
-      source: 'auto-dev.yml.tpl',
+      source: 'auto-dev-cycle.yml.tpl',
       target: 'scripts',
-      filename: 'auto-dev.yml',
+      filename: 'auto-dev-cycle.yml',
       executable: false,
     },
     {
@@ -121,6 +121,12 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
       target: 'scripts',
       filename: 'auto-dev-pm-run.sh',
       executable: true,
+    },
+    {
+      source: 'auto-dev-rebase.yml.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-rebase.yml',
+      executable: false,
     },
   ],
   postInstall: 'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository."',

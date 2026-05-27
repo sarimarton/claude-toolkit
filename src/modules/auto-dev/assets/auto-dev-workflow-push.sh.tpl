@@ -10,9 +10,10 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 SCRIPTS_DIR="{{scripts_dir}}"
 HOME_DIR="{{home}}"
-WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev.yml"
+WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-cycle.yml"
 LABEL_WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-label.yml"
 PM_WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-pm.yml"
+REBASE_WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-rebase.yml"
 
 REPO="${1:-}"
 [[ -z "$REPO" ]] && exit 0
@@ -33,12 +34,13 @@ echo ""
 
 WORKFLOW_DIR="$LOCAL_PATH/.github/workflows"
 mkdir -p "$WORKFLOW_DIR"
-cp "$WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev.yml"
+cp "$WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-cycle.yml"
 cp "$LABEL_WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-label.yml"
 cp "$PM_WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-pm.yml"
+cp "$REBASE_WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-rebase.yml"
 
 cd "$LOCAL_PATH"
-git add .github/workflows/auto-dev.yml .github/workflows/auto-dev-label.yml .github/workflows/auto-dev-pm.yml
+git add .github/workflows/auto-dev-cycle.yml .github/workflows/auto-dev-label.yml .github/workflows/auto-dev-pm.yml .github/workflows/auto-dev-rebase.yml
 if git diff --cached --quiet; then
   echo "  Workflows already up to date, no new commit needed."
 else

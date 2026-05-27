@@ -193,7 +193,7 @@ if [[ -n "$MANAGED_REPOS" ]]; then
 
         echo "-----"
         echo "--Issues | href=https://github.com/$REPO/issues?q=label%3Aai size=12"
-        echo "--Workflow runs | href=https://github.com/$REPO/actions/workflows/auto-dev.yml size=12"
+        echo "--Workflow runs | href=https://github.com/$REPO/actions/workflows/auto-dev-cycle.yml size=12"
         echo "--Repo | href=https://github.com/$REPO size=12"
         echo "-----"
         if [[ -n "$CURRENT_AUTONOMY" ]]; then
