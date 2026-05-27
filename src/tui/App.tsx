@@ -29,6 +29,7 @@ export function App({ command, args, flags }: AppProps) {
       return <DoctorReport />;
 
     case 'reinstall':
+    case 'upgrade': // backward compat: pre-rename self-update flow calls this
       return <InstallProgress modules={[]} autoConfirm={flags.yes} upgrade />;
 
     case 'chart':
