@@ -198,6 +198,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Extend PATH for self-hosted runner
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Ensure labels exist
         env:
           GH_TOKEN: ${{ github.token }}
