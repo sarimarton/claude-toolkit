@@ -203,9 +203,11 @@ if [[ -n "$MANAGED_REPOS" ]]; then
     done <<< "$MANAGED_REPOS"
 fi
 
-# ── Install button + global config ────────────────────────
+# ── Tools submenu ─────────────────────────────────────────
 
 [[ -z "$MANAGED_REPOS" ]] && echo "---"
 
-echo "Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-install.sh terminal=false refresh=false size=12"
-echo "Global config… | bash=$SCRIPTS_DIR/auto-dev-global-config.sh terminal=false refresh=false size=12"
+echo "Tools | size=12"
+echo "--Auto-dev | size=12"
+echo "----Install Auto-dev to repo… | bash=$SCRIPTS_DIR/auto-dev-install.sh terminal=false refresh=false size=12"
+echo "----Global config… | bash=$SCRIPTS_DIR/auto-dev-global-config.sh terminal=false refresh=false size=12"
