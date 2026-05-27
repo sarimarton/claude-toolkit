@@ -3,7 +3,27 @@ import type { ModuleManifest } from '../../core/types.js';
 export const manifest: ModuleManifest = {
   id: 'auto-dev',
   name: 'Auto-dev',
-  description: 'GitHub Actions-based iterative development manager. Installs a self-hosted runner and workflow into target repos, then drives issue→PR→implementation cycles using Claude — respecting plan tier rate limits. Adds a SwiftBar section to the Claude menu for runner control and cycle history.',
+  description: 'GitHub Actions-based autonomous issue→PR→implementation pipeline. Installs a self-hosted runner into target repos and drives development cycles using Claude, respecting plan tier rate limits.',
+  longDescription: `Autonomous issue→PR→implementation pipeline using GitHub Actions and Claude Code.
+
+Issues labeled 'ai' enter a hierarchical label-based state machine, advancing one step per workflow run:
+
+  new → evaluate (clarify / ready / blocked / epic)
+  ready → plan todos → open draft PR
+  in-progress → implement one task → commit → push
+  done → mark PR ready for review
+
+Labels used: ai, ai:ready, ai:in-progress, ai:done, ai:blocked, ai:clarifying, ai:epic.
+Model overrides: add 'opus' or 'haiku' label to an issue to change the model for that cycle.
+
+Rate limiting: each run checks usage-monitor output first and skips if Claude usage exceeds a configurable threshold (default: 50% of plan bucket). Autonomy can be set to 'low' to require human approval before PRs are created.
+
+PM agent (runs every 6h): reviews backlog health, responds to owner comments, creates sub-issues for epics, and optionally writes README.md for new repos.
+
+Menubar: adds a SwiftBar section showing managed repos (tagged with GitHub topic 'auto-dev'), runner status (tmux session), and per-repo cycle history.
+
+Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
+  auto-dev-runner-setup.sh <owner/repo>`,
   platform: 'darwin',
   dependencies: [
     { module: 'menubar', type: 'hard' },

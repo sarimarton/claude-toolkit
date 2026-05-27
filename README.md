@@ -79,6 +79,7 @@ claude-toolkit chart            # Open usage chart dashboard in browser
 
 | Module | Platform | Description |
 |---|---|---|
+| **auto-dev** | macOS | Autonomous issue→PR→implementation pipeline via GitHub Actions + Claude |
 | **topic-markers** | any | `$topic` / `$completeness` / `$state` markers on every response |
 | **tmux-titles** | any | Sets tmux window name from topic marker |
 | **tmux-sessions** | any | AI session aggregator (`ts` command + `/tmux` slash command) |
@@ -90,6 +91,33 @@ claude-toolkit chart            # Open usage chart dashboard in browser
 | **ghostty-tmux** | any | Ghostty tab command with session lifecycle management |
 | **vscode-tmux** | any | VS Code terminal profile with tmux integration |
 | **vscode-terminal-topic** | macOS | VS Code extension: terminal tab renaming from $topic markers |
+
+### auto-dev
+
+Installs a self-hosted GitHub Actions runner and three workflows into a target repo, then drives autonomous development cycles using Claude Code. Issues labeled `ai` advance through a label-based state machine — one step per workflow run:
+
+```
+new → evaluate (clarify / ready / blocked / epic)
+ready → plan todos → open draft PR
+in-progress → implement one task per run → commit → push
+done → PR ready for review
+```
+
+**Rate limiting** — each run checks `usage-monitor` output first and skips if Claude usage exceeds a configurable threshold (default: 50% of plan bucket).
+
+**PM agent** — runs every 6h: reviews backlog health, responds to owner comments, creates sub-issues for epics, optionally writes `README.md` for new repos.
+
+**Menubar** — adds a SwiftBar section listing repos tagged with the GitHub topic `auto-dev`, with runner status, autonomy level, and per-repo cycle history.
+
+**Setup:**
+
+```bash
+# Via SwiftBar menu: "Install Auto-dev to repo…"
+# Or directly:
+auto-dev-runner-setup.sh <owner/repo>
+```
+
+Requires: `gh` (GitHub CLI), `jq`, `tmux`, `gum`, `claude` (Claude Code CLI).
 
 ### Dependency graph
 

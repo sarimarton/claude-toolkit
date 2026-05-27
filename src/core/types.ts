@@ -82,6 +82,8 @@ export interface ModuleManifest {
   name: string;
   /** Short description */
   description: string;
+  /** Extended description shown in the TUI detail panel (newlines supported) */
+  longDescription?: string;
   /** Platform requirement */
   platform: PlatformReq;
   /** Dependencies on other modules */

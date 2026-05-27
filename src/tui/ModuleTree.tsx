@@ -258,7 +258,7 @@ export function ModuleTree() {
             {current?.status === 'installed' ? '✓ installed' : current?.status === 'partial' ? '◐ partial' : '○ not installed'}
           </Text>
           <Text> </Text>
-          <Text wrap="wrap">{current?.manifest.description}</Text>
+          <Text wrap="wrap">{current?.manifest.longDescription ?? current?.manifest.description}</Text>
           {deps.length > 0 && (
             <>
               <Text> </Text>
