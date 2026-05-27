@@ -69,6 +69,18 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
       executable: true,
     },
     {
+      source: 'auto-dev-workflow-push.sh.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-workflow-push.sh',
+      executable: true,
+    },
+    {
+      source: 'auto-dev-reregister.sh.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-reregister.sh',
+      executable: true,
+    },
+    {
       source: 'auto-dev-attach.sh.tpl',
       target: 'scripts',
       filename: 'auto-dev-attach.sh',

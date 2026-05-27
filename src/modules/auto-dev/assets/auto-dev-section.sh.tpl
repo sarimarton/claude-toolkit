@@ -196,7 +196,8 @@ if [[ -n "$MANAGED_REPOS" ]]; then
         else
             echo "--Config… | bash=$SCRIPTS_DIR/auto-dev-config.sh param1=$REPO terminal=false refresh=false size=12"
         fi
-        echo "--Reinstall Auto-dev… | bash=$SCRIPTS_DIR/auto-dev-reinstall.sh param1=$REPO terminal=false refresh=false size=12"
+        echo "--Update Auto-dev workflow files… | bash=$SCRIPTS_DIR/auto-dev-reinstall.sh param1=$REPO terminal=false refresh=false size=12"
+        echo "--Re-register Runner… | bash=$SCRIPTS_DIR/auto-dev-reregister.sh param1=$REPO terminal=false refresh=false size=12"
         echo "--Run PM agent… | bash=$SCRIPTS_DIR/auto-dev-pm-run.sh param1=$REPO terminal=false refresh=true size=12"
 
     done <<< "$MANAGED_REPOS"
