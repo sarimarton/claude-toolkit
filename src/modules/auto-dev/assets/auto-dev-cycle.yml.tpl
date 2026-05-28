@@ -42,9 +42,10 @@ permissions:
 #   [ai] + [ai:done]         → All todos complete, review requested
 #   [ai] + [ai:blocked]      → Too complex / unclear, needs human
 #
-# Model overrides (optional, on any issue/PR):
-#   [opus]   → Use Claude Opus for next iteration
-#   [haiku]  → Use Claude Haiku for next iteration
+# Model overrides (optional, on any issue/PR). Default is Opus:
+#   [sonnet] → Use Claude Sonnet for next iteration (downgrade)
+#   [haiku]  → Use Claude Haiku for next iteration (downgrade)
+#   [opus]   → Force Claude Opus (also the default when no label is set)
 # ─────────────────────────────────────────────────────────────
 
 jobs:
@@ -214,8 +215,9 @@ jobs:
           gh label create "ai:blocked"     --color "e4e669" --description "Auto-dev: blocked"           --force
           gh label create "ai:busy"        --color "cccccc" --description "Auto-dev: cycle running"     --force
           gh label create "ai:epic"        --color "e99695" --description "Auto-dev: epic/kickoff"      --force
-          gh label create "opus"           --color "7057ff" --description "Auto-dev: use Opus model"    --force
-          gh label create "haiku"          --color "006b75" --description "Auto-dev: use Haiku model"   --force
+          gh label create "opus"           --color "7057ff" --description "Auto-dev: force Opus (default)" --force
+          gh label create "sonnet"         --color "1f6feb" --description "Auto-dev: use Sonnet model"   --force
+          gh label create "haiku"          --color "006b75" --description "Auto-dev: use Haiku model"    --force
 
       - name: Load repo config
         id: repo-config
@@ -270,10 +272,10 @@ jobs:
           else STATE="skip"
           fi
 
-          # Model selection from labels
-          if echo "$LABELS" | grep -q "\bopus\b"; then MODEL="claude-opus-4-7"
-          elif echo "$LABELS" | grep -q "\bhaiku\b"; then MODEL="claude-haiku-4-5-20251001"
-          else MODEL="claude-sonnet-4-6"
+          # Model selection from labels (default: Opus)
+          if echo "$LABELS" | grep -q "\bhaiku\b"; then MODEL="claude-haiku-4-5-20251001"
+          elif echo "$LABELS" | grep -q "\bsonnet\b"; then MODEL="claude-sonnet-4-6"
+          else MODEL="claude-opus-4-7"
           fi
 
           # Safe branch name from title
@@ -371,7 +373,7 @@ jobs:
           } > "$WORK_DIR/evaluate-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"decision":{"type":"string","enum":["epic","clarify","ready","blocked"]},"comment":{"type":"string"},"architecture_overview":{"type":"string"},"lhf":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"]}},"questions":{"type":"string"},"summary":{"type":"string"},"approach":{"type":"string"},"reason":{"type":"string"}},"required":["decision"]}'
-          RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
+          RESULT=$(claude --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/evaluate-result.json"
 
           DECISION=$(jq -r '.structured_output.decision // "error"' "$WORK_DIR/evaluate-result.json" 2>/dev/null || echo "error")
@@ -548,11 +550,26 @@ jobs:
             echo "- Each task must be completable in ONE iteration (10-20 minutes of Claude work, one logical change)."
             echo "- Tasks must be ordered correctly (dependencies first)."
             echo "- Be specific: include file paths and what exactly changes."
-            echo "- Always add at least one testing task as the LAST task:"
-            echo "  - Prefix ALL test tasks with 'Test:' so the runner can execute them (e.g. 'Test: run python reverse_pdf.py input.pdf && compare pages with expected output')."
-            echo "  - Automated test: 'Test: run <exact shell command> — expected: <what success looks like (exit code, output, file diff)>'"
-            echo "  - If no automated assertion is possible, use: 'Manual validation: <step-by-step instructions and exactly what to look for>'"
-            echo "  - Prefer 'Test:' over 'Manual validation:'. Only use manual if there is truly no programmatic way to verify correctness."
+            echo "- SCOPE: stay strictly within THIS issue's concrete feature/fix. Do NOT add tasks for a"
+            echo "  project-wide README, vision/overview docs, or general housekeeping — those are owned by the"
+            echo "  PM agent and committed separately to main. A feature PR must not carry a project-vision README."
+            echo ""
+            echo "- TEST-FIRST (mandatory): every feature/fix task must be IMMEDIATELY PRECEDED by a 'Test:' task"
+            echo "  that establishes the verification BEFORE the implementation exists. Order is: 'Test:' task"
+            echo "  first (write the test + prove it currently FAILS / red), then the implementation task (green)."
+            echo "  - Prefix verification tasks with 'Test:' so the runner executes rather than implements them."
+            echo "  - Each 'Test:' task must state BOTH the red proof (how to confirm it fails without the feature)"
+            echo "    AND the green expectation (what passing looks like): exit code, output, file diff, etc."
+            echo "    Example: 'Test: write test_reverse.py asserting page order is reversed; run it and confirm it"
+            echo "    FAILS against the current code, then it will pass after the implementation task.'"
+            echo "  - Be creative about what counts as a test. For visual/video/audio output a valid test is"
+            echo "    perceptual: render the artifact and analyze it (frame-by-frame inspection, image diff,"
+            echo "    reading individual frames for an effect). Allocate a real task for rendering + inspecting,"
+            echo "    not just an exit-code check."
+            echo "  - If reliable verification needs non-trivial facilitation (a rendering harness, fixtures, a"
+            echo "    test rig), add a 'Test: build the verification harness for <X>' task as its own step first."
+            echo "  - Only fall back to 'Manual validation: <steps + exactly what to look for>' when there is truly"
+            echo "    no programmatic OR perceptual (image/frame analysis) way to verify correctness."
             echo '- Output ONLY valid JSON: {"tasks": ["task description 1", "task description 2", ...]}'
             echo ""
             printf -- '--- ISSUE #%s: %s ---\n\n' "$ISSUE_NUMBER" "$ISSUE_TITLE"
@@ -562,7 +579,7 @@ jobs:
           } > "$WORK_DIR/plan-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"string"}}},"required":["tasks"]}'
-          RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
+          RESULT=$(claude --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/plan-result.json"
 
           TASKS=$(jq -c '.structured_output.tasks // []' "$WORK_DIR/plan-result.json" 2>/dev/null || echo "[]")
@@ -675,9 +692,19 @@ jobs:
             echo "RULES:"
             echo "- Implement ONLY this specific task. Do not do more."
             echo "- Read relevant files before editing."
-            echo "- If the TASK starts with 'Test:', your job is to RUN the described test — not write new code."
-            echo "  Use your bash tool to execute the specified commands, observe the output, and verify the result."
-            echo "  On success: output {\"status\": \"completed\", \"summary\": \"Tests passed: <brief output summary>\"}"
+            echo "- If the TASK starts with 'Test:', your job is to establish/run the verification — not ship features."
+            echo "  Do NOT settle for a green exit code; prove the result is actually correct:"
+            echo "  - For code: demonstrate the red->green transition. Confirm the test FAILS against the current"
+            echo "    code first (red), then (after the matching implementation exists) that it PASSES (green)."
+            echo "    Include BOTH observations in your summary — a test that was never seen to fail proves nothing."
+            echo "  - For visual/video/audio output: render the artifact and ANALYZE it perceptually — read the"
+            echo "    rendered frames/images, describe what you actually see, and compare against the expected"
+            echo "    effect. A passing exit code is NOT sufficient evidence for perceptual output."
+            echo "  - If verifying correctly needs facilitation you cannot complete in this run (a rendering rig,"
+            echo "    hardware, large fixtures), you MAY open a dedicated testing-facilitation issue:"
+            echo "    run 'gh issue create --title \"Test facilitation: <what>\" --body \"<what is needed and why>\" --label ai',"
+            echo "    then return status 'blocked' with a reason referencing that issue so the PR is held until it exists."
+            echo "  On success: output {\"status\": \"completed\", \"summary\": \"<red->green evidence or perceptual analysis>\"}"
             echo "  On failure: output {\"status\": \"blocked\", \"reason\": \"Tests failed: <exact failure output>\", \"suggestion\": \"Suggested fix based on the failure\"}"
             echo "- If the TASK starts with 'Manual validation:', do NOT implement anything."
             echo "  Instead output: {\"status\": \"question\", \"text\": \"Please perform manual validation: <task>\", \"context\": \"<what was implemented so far>\"}"
@@ -689,7 +716,7 @@ jobs:
           } > "$WORK_DIR/implement-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"status":{"type":"string","enum":["completed","blocked","question"]},"summary":{"type":"string"},"reason":{"type":"string"},"suggestion":{"type":"string"},"text":{"type":"string"},"context":{"type":"string"}},"required":["status"]}'
-          RESULT=$(claude --dangerously-skip-permissions --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
+          RESULT=$(claude --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/implement-result.json"
 
           STATUS=$(jq -r '.structured_output.status // "error"' "$WORK_DIR/implement-result.json" 2>/dev/null || echo "error")
@@ -737,12 +764,34 @@ jobs:
               --add-label "ai:done" 2>/dev/null || true
           elif [[ "$REMAINING" -eq "$MANUAL_REMAINING" ]]; then
             # Only manual validation tasks remain — ask human
-            MANUAL_LIST=$(echo "$PR_BODY" | grep '^\- \[ \] Manual validation:' | sed 's/^- \[ \] /• /' | tr '\n' '\n')
-            gh pr comment "$PR_NUMBER" --body "$(printf '🤖 **Auto-dev** — Implementation complete. Manual validation required before this PR can be marked done:\n\n%s\n\nPlease test and check off each item.' "$MANUAL_LIST")"
+            MANUAL_LIST=$(echo "$PR_BODY" | grep '^\- \[ \] Manual validation:' | sed 's/^- \[ \] /- /')
+            {
+              echo "🤖 **Auto-dev** — Implementation complete. Manual validation required before this PR can be marked done:"
+              echo ""
+              printf '%s\n' "$MANUAL_LIST"
+              echo ""
+              echo "Please test and check off each item."
+            } > "$WORK_DIR/comment.md"
+            gh pr comment "$PR_NUMBER" --body-file "$WORK_DIR/comment.md"
             gh pr edit "$PR_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
             gh issue edit "$ISSUE_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
           else
-            gh pr comment "$PR_NUMBER" --body "$(printf '%s\n%s\n%s\n' "🤖 **Auto-dev** — ✓ \`$TODO\`" "$SUMMARY" "($REMAINING task(s) remaining)")"
+            # Wrap the task text in a fenced block so its own backticks/markdown
+            # render literally (avoids broken nested code spans). Summary stays raw.
+            {
+              echo "🤖 **Auto-dev** — task complete ✅"
+              echo ""
+              echo "**Task:**"
+              echo ""
+              echo '```'
+              printf '%s\n' "$TODO"
+              echo '```'
+              echo ""
+              printf '%s\n' "$SUMMARY"
+              echo ""
+              echo "_${REMAINING} task(s) remaining_"
+            } > "$WORK_DIR/comment.md"
+            gh pr comment "$PR_NUMBER" --body-file "$WORK_DIR/comment.md"
           fi
 
       - name: "in-progress → handle blocked/question"
@@ -756,15 +805,33 @@ jobs:
           if [[ "$OUTCOME" == "blocked" ]]; then
             REASON=$(jq -r '.structured_output.reason // "Blocked."' "$WORK_DIR/implement-result.json" 2>/dev/null)
             SUGGESTION=$(jq -r '.structured_output.suggestion // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
-            BODY="🤖 **Auto-dev** — ⊘ Blocked: $REASON"
-            [[ -n "$SUGGESTION" ]] && BODY=$(printf '%s\n%s' "$BODY" "Suggestion: $SUGGESTION")
-            gh pr comment "$PR_NUMBER" --body "$BODY"
+            {
+              echo "🤖 **Auto-dev** — ⊘ Blocked"
+              echo ""
+              printf '%s\n' "$REASON"
+              if [[ -n "$SUGGESTION" ]]; then
+                echo ""
+                echo "**Suggestion:**"
+                echo ""
+                printf '%s\n' "$SUGGESTION"
+              fi
+            } > "$WORK_DIR/comment.md"
+            gh pr comment "$PR_NUMBER" --body-file "$WORK_DIR/comment.md"
           else
             QUESTION=$(jq -r '.structured_output.text // "Question."' "$WORK_DIR/implement-result.json" 2>/dev/null)
             CONTEXT=$(jq -r '.structured_output.context // ""' "$WORK_DIR/implement-result.json" 2>/dev/null)
-            BODY="🤖 **Auto-dev** — ❓ $QUESTION"
-            [[ -n "$CONTEXT" ]] && BODY=$(printf '%s\n%s' "$BODY" "Context: $CONTEXT")
-            gh pr comment "$PR_NUMBER" --body "$BODY"
+            {
+              echo "🤖 **Auto-dev** — ❓ Question"
+              echo ""
+              printf '%s\n' "$QUESTION"
+              if [[ -n "$CONTEXT" ]]; then
+                echo ""
+                echo "**Context:**"
+                echo ""
+                printf '%s\n' "$CONTEXT"
+              fi
+            } > "$WORK_DIR/comment.md"
+            gh pr comment "$PR_NUMBER" --body-file "$WORK_DIR/comment.md"
           fi
           gh pr edit "$PR_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
           gh issue edit "$ISSUE_NUMBER" --add-label "ai:blocked" 2>/dev/null || true
