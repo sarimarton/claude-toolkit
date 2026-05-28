@@ -52,6 +52,11 @@ git push origin HEAD
 
 [[ -n "$TEMP_CLONE" ]] && rm -rf "$TEMP_CLONE"
 
+# ── Ensure GitHub Project board (idempotent, local gh auth) ──
+# Fatal by design: surface a missing `project` scope rather than skipping silently.
+echo "→ Ensuring GitHub Project board for $REPO..."
+"$SCRIPTS_DIR/auto-dev-project-ensure.sh" "$REPO"
+
 osascript -e "display notification \"Workflows pushed for $REPO\" with title \"Claude Toolkit\" subtitle \"Auto-dev Reinstall\"" 2>/dev/null || true
 echo ""
 echo "✓ Workflow push complete for $REPO"

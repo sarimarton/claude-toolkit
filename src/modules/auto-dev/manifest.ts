@@ -128,6 +128,12 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
       filename: 'auto-dev-rebase.yml',
       executable: false,
     },
+    {
+      source: 'auto-dev-project-ensure.sh.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-project-ensure.sh',
+      executable: true,
+    },
   ],
   postInstall: 'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository."',
 };

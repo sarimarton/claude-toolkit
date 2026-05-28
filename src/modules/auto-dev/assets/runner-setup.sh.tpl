@@ -172,6 +172,12 @@ else
   echo "  Warning: could not add topic (non-fatal)."
 fi
 
+# ── Step 8: Ensure GitHub Project board (idempotent, local gh auth) ──
+# Fatal by design: if it fails (e.g. missing `project` scope) the setup must stop
+# loudly rather than silently leave the repo without a board.
+echo "→ Ensuring GitHub Project board for $REPO..."
+"$SCRIPTS_DIR/auto-dev-project-ensure.sh" "$REPO"
+
 # ── Done ──────────────────────────────────────────────
 osascript -e "display notification \"auto-dev installed in $REPO. Runner: auto-dev-runner-control.sh start $REPO\" with title \"Claude Toolkit\" subtitle \"Auto-dev Setup Complete\"" 2>/dev/null || true
 echo ""
