@@ -27,7 +27,7 @@ jobs:
       github.event_name != 'issue_comment' ||
       (github.event.issue.pull_request &&
        startsWith(github.event.comment.body, '/rebase'))
-    runs-on: [self-hosted, macOS]
+    runs-on: [self-hosted]
     outputs:
       matrix: ${{ steps.get-prs.outputs.matrix }}
       has_prs: ${{ steps.get-prs.outputs.has_prs }}
@@ -65,7 +65,7 @@ jobs:
   rebase:
     needs: list-prs
     if: needs.list-prs.outputs.has_prs == 'true'
-    runs-on: [self-hosted, macOS]
+    runs-on: [self-hosted]
     strategy:
       matrix: ${{ fromJson(needs.list-prs.outputs.matrix) }}
       fail-fast: false
@@ -81,14 +81,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          # PAT-ot használunk a GITHUB_TOKEN helyett, mert a GITHUB_TOKEN-nel
-          # végzett push-ok nem triggerelnek workflow run-okat (GitHub anti-recursion
-          # policy). Rebase push után a CI check-eknek el kell indulniuk, különben
-          # a PR-on sárga (pending) státuszban ragadnak a check-ek.
-          token: ${{ secrets.NEOBANK_MOBILE_PAT }}
+          # NOTE: a default GITHUB_TOKEN-nel force-pushed rebase NEM triggerel új
+          # workflow runt (GitHub anti-recursion policy), így a PR check-jei a rebase
+          # után nem futnak újra automatikusan — manuális re-run kellhet. Ha ez zavaró,
+          # állíts be egy PAT-ot secretként és add meg itt `token:`-ként.
 
       - name: Set HOME env
         run: echo "HOME=$HOME" >> $GITHUB_ENV
@@ -171,17 +170,6 @@ jobs:
           backup_branch="${prefix}/${seq}"
           git push origin "HEAD:refs/heads/${backup_branch}"
           echo "branch=${backup_branch}" >> $GITHUB_OUTPUT
-
-      - name: Restore actions from main
-        if: steps.rebase.outputs.result == 'dirty'
-        run: git checkout origin/main -- .github/actions/prepare-claude-token
-
-      - name: Prepare Claude token
-        if: steps.rebase.outputs.result == 'dirty'
-        uses: ./.github/actions/prepare-claude-token
-        with:
-          claude_code_oauth_tokens: ${{ secrets.CLAUDE_CODE_OAUTH_TOKENS }}
-          anthropic_api_keys: ${{ secrets.ANTHROPIC_API_KEYS }}
 
       - name: Claude-assisted rebase
         if: steps.rebase.outputs.result == 'dirty'
