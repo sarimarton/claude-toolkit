@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# auto-dev-global-config.sh — Open the toolkit config in the default editor.
+# edit-config.sh — Open the toolkit config in the default editor.
 #
-# All settings now live in config.yaml under modules.* (auto-dev under
-# modules.autoDev: maxIssuesPerRun, bailoutPct, repos.<owner/repo>.autonomy).
-# Editing the file takes effect on the next run — every consumer reads it live.
-# No gum, no separate global.json.
+# All settings live in config.yaml under modules.* (read live at runtime, so edits
+# take effect without a reinstall). This is toolkit-global, not module-specific.
 
 CONFIG_FILE="{{config_file}}"
 

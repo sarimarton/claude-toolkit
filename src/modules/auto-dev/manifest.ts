@@ -105,12 +105,6 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
       executable: true,
     },
     {
-      source: 'auto-dev-global-config.sh.tpl',
-      target: 'scripts',
-      filename: 'auto-dev-global-config.sh',
-      executable: true,
-    },
-    {
       source: 'auto-dev-pm.yml.tpl',
       target: 'scripts',
       filename: 'auto-dev-pm.yml',

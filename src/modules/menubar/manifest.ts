@@ -46,6 +46,12 @@ export const manifest: ModuleManifest = {
       executable: true,
     },
     {
+      source: 'edit-config.sh.tpl',
+      target: 'scripts',
+      filename: 'edit-config.sh',
+      executable: true,
+    },
+    {
       source: 'swiftbar-install.sh.tpl',
       target: 'scripts',
       filename: 'swiftbar-install.sh',

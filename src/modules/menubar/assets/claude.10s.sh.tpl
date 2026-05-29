@@ -543,10 +543,10 @@ fi
 echo "---"
 echo "Tools"
 echo "-- Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
+echo "-- Edit config… | bash=$HELPERS/edit-config.sh terminal=false refresh=false sfimage=gearshape"
 if [[ -f "$HELPERS/auto-dev-install.sh" ]]; then
   echo "-- Auto-dev"
   echo "---- Install Auto-dev to repo… | bash=$HELPERS/auto-dev-install.sh terminal=false refresh=false"
-  echo "---- Global config… | bash=$HELPERS/auto-dev-global-config.sh terminal=false refresh=false"
 fi
 echo "-- View logs | bash=/usr/bin/open param1=-R param2={{state_dir}}/usage/ terminal=false"
 if $MULTI_ACCOUNT; then
