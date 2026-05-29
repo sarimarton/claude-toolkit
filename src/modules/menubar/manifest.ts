@@ -46,6 +46,12 @@ export const manifest: ModuleManifest = {
       executable: true,
     },
     {
+      source: 'claude-toolkit-update-worker.sh.tpl',
+      target: 'scripts',
+      filename: 'claude-toolkit-update-worker.sh',
+      executable: true,
+    },
+    {
       source: 'edit-config.sh.tpl',
       target: 'scripts',
       filename: 'edit-config.sh',

@@ -42,8 +42,12 @@ if (command === 'update') {
   // Must run before Ink takes over the terminal — stdio: 'inherit' streams
   // git/npm output directly. After rebuild, re-exec the (new) cli to upgrade.
   const installDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-  console.log('Pulling latest changes...');
-  execSync('git pull', { cwd: installDir, stdio: 'inherit' });
+  console.log('Fetching latest changes...');
+  // Hard-reset to origin/main rather than `git pull`: the install dir is a pristine
+  // mirror (development happens in a separate clone), so there is nothing to merge
+  // and a reset can never hit a conflict — essential for unattended/background updates.
+  execSync('git fetch origin', { cwd: installDir, stdio: 'inherit' });
+  execSync('git reset --hard origin/main', { cwd: installDir, stdio: 'inherit' });
   console.log('Rebuilding...');
   execSync('npm ci', { cwd: installDir, stdio: 'inherit' });
   execSync('npm run build', { cwd: installDir, stdio: 'inherit' });
