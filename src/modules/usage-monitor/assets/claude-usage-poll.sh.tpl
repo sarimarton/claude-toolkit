@@ -219,7 +219,12 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
     # Usage tab with Right/Left — transiting through Usage repaints the block,
     # which pipe-pane captures even though we immediately leave the tab. Robust to
     # whichever tab /usage happens to open on.
-    local MAX_SECONDS=12
+    # Acquisition timeout. The Usage tab derives its "Current session" figure by
+    # scanning local sessions on disk; on a fresh process that scan can take
+    # >12s, so the old 12s cap timed out ~1-in-8 polls (observed: panel stuck on
+    # "Scanning local sessions…" when the window closed). 25s comfortably covers
+    # a slow scan and is still a small fraction of the 5min poll interval.
+    local MAX_SECONDS=25
     local start=$SECONDS
     local rc=1
     while [ $(( SECONDS - start )) -lt $MAX_SECONDS ]; do
@@ -238,6 +243,17 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
       # (a stale "dialog dismissed" line from before /usage must not abort us).
       if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | tail -5 | grep -qE "(Status|Settings) dialog dismissed"; then
         rc=2; break
+      fi
+      # Tab-flip vs. wait: once the Usage tab has started loading (its scan/
+      # spinner is already in the stream), HOLD STILL — flipping to the Stats tab
+      # and back restarts the local-session scan, so aggressive nudging can keep
+      # it from ever completing. That restart-on-every-flip was the root cause of
+      # the ~1-in-8 timeouts: a slow scan never finished inside one 0.25s window.
+      # Only nudge while no load indicator is present yet, i.e. to land on /
+      # repaint the Usage tab when /usage happened to open on a different tab.
+      if grep -aqE "Scanning local sessions|Loading usage data" "$RAW_LOG" 2>/dev/null; then
+        sleep 0.5
+        continue
       fi
       # Nudge: re-enter the Usage tab to trigger a repaint.
       $TMUX_BIN send-keys -t "$SESSION" Right 2>/dev/null
@@ -600,6 +616,32 @@ if "pct" in result and "reset_ts" in result:
         with open(log_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
 ' < "$RAW_LOG" > "$USAGE_FILE"
+
+  # Human-readable summary to stdout. Lets you run this script directly in a
+  # terminal and immediately see the parsed result instead of having to cat the
+  # JSON file. Safe to always emit: the only caller is the menu plugin, which
+  # invokes us with &>/dev/null — nothing parses our stdout.
+  python3 -c '
+import json, sys, time
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("claude-usage: could not read result"); sys.exit(0)
+acct = d.get("account") or ""
+prefix = "claude-usage" + ("[" + acct + "]" if acct else "")
+pct = d.get("pct"); wk = d.get("weekly_pct"); rt = d.get("reset_ts"); err = d.get("error")
+if pct is not None:
+    msg = prefix + ": session " + str(pct) + "% used"
+    if wk is not None: msg += ", weekly " + str(wk) + "% used"
+    if rt: msg += ", resets in " + str(max(0, int((rt - time.time()) // 60))) + "m"
+    if err: msg += "  [stale: " + str(err) + "]"
+    print(msg)
+elif err:
+    detail = d.get("error_detail")
+    print(prefix + ": ERROR " + str(err) + (" - " + str(detail) if detail else ""))
+else:
+    print(prefix + ": no data")
+' "$USAGE_FILE"
 
   # Close the usage panel
   $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null

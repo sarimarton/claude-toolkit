@@ -234,7 +234,11 @@ if [[ -n "$pct" ]]; then
     if $weekly_capped; then
         display_pct=0
     elif $SHOW_REMAINING; then
+        # pct can exceed 100 when you're over the session limit (extra-budget
+        # mode reports e.g. 101% used), which would make "remaining" go negative
+        # and the menu show "-1%". Clamp to 0.
         display_pct=$((100 - pct))
+        (( display_pct < 0 )) && display_pct=0
     else
         display_pct=$pct
     fi
@@ -323,7 +327,7 @@ if [[ -n "$pct" ]]; then
     remaining_label=$($SHOW_REMAINING && echo "remaining" || echo "used")
     # When weekly is capped, show actual session % on the status line too
     if $weekly_capped; then
-        if $SHOW_REMAINING; then session_display=$((100 - pct)); else session_display=$pct; fi
+        if $SHOW_REMAINING; then session_display=$((100 - pct)); (( session_display < 0 )) && session_display=0; else session_display=$pct; fi
         status_line="⊘ Weekly limit reached · session ${session_display}% ${remaining_label}"
     else
         status_line="${display_pct}% ${remaining_label}"
@@ -349,7 +353,7 @@ if [[ -n "$pct" ]]; then
     echo "${A_DIM}${status_line}${A_RST} | ansi=true size=13"
     # Weekly usage line (show when data available and not already shown in main line)
     if [[ -n "$weekly_pct" ]] && ! $weekly_capped; then
-        if $SHOW_REMAINING; then weekly_display=$((100 - weekly_pct)); else weekly_display=$weekly_pct; fi
+        if $SHOW_REMAINING; then weekly_display=$((100 - weekly_pct)); (( weekly_display < 0 )) && weekly_display=0; else weekly_display=$weekly_pct; fi
         weekly_line="Week: ${weekly_display}% ${remaining_label}"
         if [[ -n "$weekly_reset_ts" ]]; then
             weekly_mins=$(( (weekly_reset_ts - now) / 60 ))
@@ -519,7 +523,7 @@ if $MULTI_ACCOUNT; then
             apct=$(json_num_file pct "$acct_file")
             aerr=$(json_str_file error "$acct_file")
             if [[ -n "$apct" ]]; then
-                if $SHOW_REMAINING; then adisp=$((100 - apct)); else adisp=$apct; fi
+                if $SHOW_REMAINING; then adisp=$((100 - apct)); (( adisp < 0 )) && adisp=0; else adisp=$apct; fi
                 acolor=$(pct_color $adisp)
                 echo "${acct}: ${adisp}% | color=$acolor size=12"
             elif [[ -n "$aerr" ]]; then
