@@ -250,6 +250,7 @@ jobs:
             echo ""
             echo "Also include at the top level:"
             echo '- "summary": one-line summary in Hungarian (max 80 chars) — shown in menubar.'
+            echo '- "next": one sentence in Hungarian: what should happen next for the owner to know about (e.g. "Merge #5 when CI passes", "Várd meg a user visszajelzést #3-ra"). Max 80 chars.'
             echo '- "report": markdown report in Hungarian — shown in GitHub Actions step summary.'
             echo "   Include: what you considered, what you decided to do and why, what you intentionally"
             echo "   skipped (e.g. 'majdnem kommenteltem #12-re, de a user kérdése még friss, hagyom'),"
@@ -315,6 +316,7 @@ jobs:
             "type": "object",
             "properties": {
               "summary": {"type":"string"},
+              "next":    {"type":"string"},
               "report":  {"type":"string"},
               "actions": {
                 "type": "array",
@@ -336,7 +338,7 @@ jobs:
                 }
               }
             },
-            "required": ["summary","report","actions"]
+            "required": ["summary","next","report","actions"]
           }'
 
           RESULT=$(claude --dangerously-skip-permissions --model claude-opus-4-7 --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/pm-prompt.txt")" 2>"$WORK_DIR/pm-stderr.txt") || true
@@ -460,6 +462,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           SUMMARY=$(jq -r '.structured_output.summary // "(no summary)"' "$WORK_DIR/pm-result.json" 2>/dev/null)
+          NEXT=$(jq -r '.structured_output.next // ""' "$WORK_DIR/pm-result.json" 2>/dev/null)
           REPORT=$(jq -r '.structured_output.report // "(no report)"' "$WORK_DIR/pm-result.json" 2>/dev/null)
           ACTIONS=$(jq -c '.structured_output.actions // []' "$WORK_DIR/pm-result.json" 2>/dev/null || echo "[]")
           ACTION_COUNT=$(echo "$ACTIONS" | jq 'length')
@@ -502,8 +505,9 @@ jobs:
             --arg ts "$TS" \
             --arg repo "$GH_REPO" \
             --arg summary "$SUMMARY" \
+            --arg next "$NEXT" \
             --argjson count "$ACTION_COUNT" \
-            '{ts: ($ts|tonumber), repo: $repo, agent: "pm", actions: $count, summary: $summary}' \
+            '{ts: ($ts|tonumber), repo: $repo, agent: "pm", actions: $count, summary: $summary, next: $next}' \
             >> "$STATE_DIR/activity.jsonl"
 
       - name: Save cursor

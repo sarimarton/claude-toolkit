@@ -140,53 +140,74 @@ if [[ -n "$MANAGED_REPOS" ]]; then
 
         echo "-----"
 
-        # Recent cycles — REPO_ENTRIES_JSON already loaded above (no extra jq -s)
+        # Activity section — REPO_ENTRIES_JSON already loaded above (no extra jq -s)
         _has_entries=$($JQ -r 'if length > 0 then "yes" else "no" end' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
         if [[ "$_has_entries" == "yes" ]]; then
-            echo "--Recent cycles | size=11 color=#888888"
             NOW_S=$(date +%s)
-            while IFS=$'\x1f' read -r AGENT ENTRY_TS OUTCOME TODO MODEL PR_REF PM_SUMMARY PM_COUNT; do
-                AGE_MIN=$(( (NOW_S - ENTRY_TS) / 60 ))
-                if   (( AGE_MIN < 60 ));   then AGE="${AGE_MIN}m"
-                elif (( AGE_MIN < 1440 )); then AGE="$(( AGE_MIN / 60 ))h"
-                else                            AGE="$(( AGE_MIN / 1440 ))d"
-                fi
 
-                if [[ "$AGENT" == "pm" ]]; then
-                    echo "--📋 $AGE PM: ${PM_SUMMARY:-(no summary)} ($PM_COUNT) | color=#bf5af2 size=12 href=https://github.com/$REPO/actions/workflows/auto-dev-pm.yml"
-                    continue
-                fi
-
-                case "$OUTCOME" in
-                    completed) ICON="✓"; COLOR="#30d158" ;;
-                    blocked)   ICON="⊘"; COLOR="#ff9f0a" ;;
-                    question)  ICON="?"; COLOR="#0a84ff" ;;
-                    crash)     ICON="✗"; COLOR="#ff453a" ;;
-                    *)         ICON="·"; COLOR="#888888" ;;
-                esac
-
-                DISPLAY="$ICON $AGE ${TODO:-(no todo)}"
-                [[ -n "$MODEL" ]] && DISPLAY="$DISPLAY [$MODEL]"
-
-                if [[ -n "$PR_REF" ]]; then
-                    PR_URL="https://github.com/$REPO/pull/${PR_REF##*#}"
-                    echo "--$DISPLAY | color=$COLOR size=12 href=$PR_URL"
-                else
-                    echo "--$DISPLAY | color=$COLOR size=12"
-                fi
-            done < <($JQ -r '
-                .[-5:] | reverse[] |
+            # Last PM report — always pinned, regardless of how many cycles followed
+            IFS=$'\x1f' read -r PM_TS PM_SUM PM_CNT PM_NEXT < <($JQ -r '
+                [.[] | select(.agent == "pm")] |
+                if length > 0 then last |
                 [
-                    (.agent // "auto-dev"),
                     ((.ts // 0) | tostring),
-                    (.outcome // "?"),
-                    ((.todo // "") | .[0:35]),
-                    ((.model // "") | gsub("claude-"; "") | gsub("-[0-9].*"; "")),
-                    (.pr // ""),
-                    ((.summary // "") | .[0:50]),
-                    ((.actions // 0) | tostring)
+                    ((.summary // "") | .[0:60]),
+                    ((.actions // 0) | tostring),
+                    ((.next // "") | gsub("[|]"; "\u2223") | .[0:80])
                 ] | join("\u001f")
+                else empty end
             ' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
+            if [[ -n "$PM_TS" ]]; then
+                PM_AGE_MIN=$(( (NOW_S - PM_TS) / 60 ))
+                if   (( PM_AGE_MIN < 60 ));   then PM_AGE="${PM_AGE_MIN}m"
+                elif (( PM_AGE_MIN < 1440 )); then PM_AGE="$(( PM_AGE_MIN / 60 ))h"
+                else                               PM_AGE="$(( PM_AGE_MIN / 1440 ))d"
+                fi
+                PM_DISPLAY="📋 $PM_AGE PM: ${PM_SUM:-(no summary)} (${PM_CNT})"
+                PM_TT=""
+                [[ -n "$PM_NEXT" ]] && PM_TT=" tooltip=$PM_NEXT"
+                echo "--$PM_DISPLAY | color=#bf5af2 size=12 href=https://github.com/$REPO/actions/workflows/auto-dev-pm.yml${PM_TT}"
+            fi
+
+            echo "-----"
+
+            # Last 5 dev cycles (non-PM)
+            _has_cycles=$($JQ -r '[.[] | select((.agent // "auto-dev") != "pm")] | if length > 0 then "yes" else "no" end' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
+            if [[ "$_has_cycles" == "yes" ]]; then
+                echo "--Cycles | size=11 color=#888888"
+                while IFS=$'\x1f' read -r ENTRY_TS OUTCOME TODO PR_REF; do
+                    AGE_MIN=$(( (NOW_S - ENTRY_TS) / 60 ))
+                    if   (( AGE_MIN < 60 ));   then AGE="${AGE_MIN}m"
+                    elif (( AGE_MIN < 1440 )); then AGE="$(( AGE_MIN / 60 ))h"
+                    else                            AGE="$(( AGE_MIN / 1440 ))d"
+                    fi
+
+                    case "$OUTCOME" in
+                        completed) ICON="✓"; COLOR="#30d158" ;;
+                        blocked)   ICON="⊘"; COLOR="#ff9f0a" ;;
+                        question)  ICON="?"; COLOR="#0a84ff" ;;
+                        crash)     ICON="✗"; COLOR="#ff453a" ;;
+                        *)         ICON="·"; COLOR="#888888" ;;
+                    esac
+
+                    DISPLAY="$ICON $AGE ${TODO:-(no todo)}"
+
+                    if [[ -n "$PR_REF" ]]; then
+                        PR_URL="https://github.com/$REPO/pull/${PR_REF##*#}"
+                        echo "--$DISPLAY | color=$COLOR size=12 href=$PR_URL"
+                    else
+                        echo "--$DISPLAY | color=$COLOR size=12"
+                    fi
+                done < <($JQ -r '
+                    [.[] | select((.agent // "auto-dev") != "pm")] | .[-5:] | reverse[] |
+                    [
+                        ((.ts // 0) | tostring),
+                        (.outcome // "?"),
+                        ((.todo // "") | split("\n")[0] | gsub("`[^`]*`"; "…") | gsub("`"; "") | .[0:40]),
+                        (.pr // "")
+                    ] | join("\u001f")
+                ' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
+            fi
         else
             echo "--No cycles yet | size=12 color=#888888"
         fi
