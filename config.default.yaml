@@ -14,6 +14,12 @@ chart:
   planMonthlyCost: 150       # Your plan's monthly cost in USD
   apiCostPerSessionPct: 0.20 # Estimated API cost per 1% of a 5h session window
 
+# Usage monitor
+usageMonitor:
+  pollIntervalSeconds: 300   # Seconds between /usage polls. Each poll recreates the
+                             # monitor's claude session (the long-lived one freezes its
+                             # "Current session" value after ~1h), so keep this generous.
+
 # Multi-account usage monitoring (optional)
 # Each account gets its own tmux session and JSONL log.
 # The 'primary' account is displayed in the menubar title.

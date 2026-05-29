@@ -18,6 +18,9 @@ interface UserConfig {
     planMonthlyCost?: number;
     apiCostPerSessionPct?: number;
   };
+  usageMonitor?: {
+    pollIntervalSeconds?: number;
+  };
   accounts?: Array<{
     name: string;
     token: string;
@@ -86,6 +89,7 @@ export function resolveConfig(): ResolvedConfig {
     claudeDir: path.join(HOME, '.claude'),
     chartPlanCost: user.chart?.planMonthlyCost ?? 150,
     chartApiRate: user.chart?.apiCostPerSessionPct ?? 0.20,
+    pollIntervalSeconds: user.usageMonitor?.pollIntervalSeconds ?? 300,
     accounts: (user.accounts || []).map(a => ({
       name: a.name,
       token: a.token,
