@@ -9,9 +9,23 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:
 TMUX_BIN={{tmux}}
 SESSION="claude_toolkit_update"
 WORKER="/tmp/claude-toolkit-update-worker.sh"
+LAUNCH_LOG="/tmp/claude-toolkit-update-launch.log"
 
-# Already updating? don't launch a second run.
-$TMUX_BIN has-session -t "$SESSION" 2>/dev/null && exit 0
+echo "$(date '+%Y-%m-%d %H:%M:%S') launcher invoked (TMUX=${TMUX:-unset})" >> "$LAUNCH_LOG"
 
-cp "{{scripts_dir}}/claude-toolkit-update-worker.sh" "$WORKER" 2>/dev/null && chmod +x "$WORKER" 2>/dev/null || exit 1
-$TMUX_BIN new-session -d -s "$SESSION" "$WORKER"
+# Clear any leftover session: a healthy worker finishes in seconds, so an existing
+# session means a previous run got stuck — never let that silently block updates.
+$TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
+
+if ! cp "{{scripts_dir}}/claude-toolkit-update-worker.sh" "$WORKER" 2>>"$LAUNCH_LOG"; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') cp failed" >> "$LAUNCH_LOG"
+  exit 1
+fi
+chmod +x "$WORKER" 2>>"$LAUNCH_LOG"
+
+if $TMUX_BIN new-session -d -s "$SESSION" "$WORKER" 2>>"$LAUNCH_LOG"; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') worker launched" >> "$LAUNCH_LOG"
+else
+  echo "$(date '+%Y-%m-%d %H:%M:%S') new-session failed" >> "$LAUNCH_LOG"
+  exit 1
+fi
