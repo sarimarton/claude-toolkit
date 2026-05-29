@@ -59,10 +59,12 @@ poll_account() {
     local SESSION="claude_usage_mon"
     local USAGE_FILE="/tmp/claude-usage.json"
     local USAGE_LOG="$USAGE_DIR/usage.jsonl"
+    local RAW_LOG="/tmp/claude-usage-raw.log"
   else
     local SESSION="claude_usage_mon_${ACCT_NAME}"
     local USAGE_FILE="/tmp/claude-usage-${ACCT_NAME}.json"
     local USAGE_LOG="$USAGE_DIR/usage-${ACCT_NAME}.jsonl"
+    local RAW_LOG="/tmp/claude-usage-raw-${ACCT_NAME}.log"
   fi
 
   local PHASES=()
@@ -170,8 +172,22 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
   }
 
   send_usage_and_wait() {
-    # Clear scrollback so the parser cannot match stale "% used" lines from a prior panel render
-    $TMUX_BIN clear-history -t "$SESSION" 2>/dev/null
+    # Low-level capture via pipe-pane instead of capture-pane.
+    #
+    # capture-pane only reads tmux's *settled* screen grid. Current Claude Code
+    # paints the "Current session"/"Current week" usage block and then overwrites
+    # it within the same render burst, so by the time capture-pane reads the grid
+    # the block is already gone — it is invisible to any capture-pane poll, no
+    # matter how fast. pipe-pane instead streams every byte the program writes to
+    # the pane (all intermediate renders included), so the block lands in the raw
+    # log even when it only flashes for a single frame. The block reliably
+    # repaints on every tab switch, so we nudge the Usage tab to force it out.
+    #
+    # The raw log is truncated per call, so it never carries stale cross-poll data
+    # — that removes the need for the old clear-history + "Refreshing" guards.
+    : > "$RAW_LOG"
+    $TMUX_BIN pipe-pane -t "$SESSION" "cat >> '$RAW_LOG'" 2>/dev/null
+
     # Reset input state: C-u wipes any residual prompt text without cycling the
     # Claude UI mode. Escape used to be safe here, but the current UI interprets
     # Escape on an empty prompt as "open Rewind/agent panel", which silently
@@ -193,24 +209,37 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
     sleep 0.3
     $TMUX_BIN send-keys -t "$SESSION" Enter 2>/dev/null
 
-    local MAX_ATTEMPTS=30
-    local attempt=0
-    while [ $attempt -lt $MAX_ATTEMPTS ]; do
-      if [ $attempt -lt 15 ]; then sleep 0.2; else sleep 1; fi
-      attempt=$((attempt + 1))
-      content=$($TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
-      # Only accept the panel once the "Refreshing…" spinner is gone. The Claude
-      # UI renders stale "% used" + "Resets …" rows from the previous window
-      # while it loads fresh numbers from the server, so an early-bird "% used"
-      # match here would lock in the stale values for the rest of the cycle.
-      if echo "$content" | grep -q "% used" && ! echo "$content" | grep -q "Refreshing"; then return 0; fi
-      if echo "$content" | tail -5 | grep -qE "(Status|Settings) dialog dismissed"; then return 2; fi
-      if echo "$content" | grep -q "Failed to load usage data"; then
-        if echo "$content" | grep -q "rate_limit_error"; then return 0; fi
-        return 1
+    # Acquisition loop: poll the raw log (not the grid). Each iteration nudges the
+    # Usage tab with Right/Left — transiting through Usage repaints the block,
+    # which pipe-pane captures even though we immediately leave the tab. Robust to
+    # whichever tab /usage happens to open on.
+    local MAX_SECONDS=12
+    local start=$SECONDS
+    local rc=1
+    while [ $(( SECONDS - start )) -lt $MAX_SECONDS ]; do
+      # The percent and the word "used" are printed at separate columns, so in the
+      # raw stream a cursor-move escape (e.g. \x1b[58G, itself containing digits)
+      # sits between them — a literal "% used" never matches. Allow any bytes in
+      # between instead.
+      if grep -aq "Current session" "$RAW_LOG" 2>/dev/null && grep -aqE '[0-9]+%.{0,20}used' "$RAW_LOG" 2>/dev/null; then
+        rc=0; break
       fi
+      if grep -aq "Failed to load usage data" "$RAW_LOG" 2>/dev/null; then
+        grep -aq "rate_limit_error" "$RAW_LOG" 2>/dev/null && rc=0 || rc=1
+        break
+      fi
+      # Only treat a dismissal as fatal once it is the latest thing on screen
+      # (a stale "dialog dismissed" line from before /usage must not abort us).
+      if $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null | tail -5 | grep -qE "(Status|Settings) dialog dismissed"; then
+        rc=2; break
+      fi
+      # Nudge: re-enter the Usage tab to trigger a repaint.
+      $TMUX_BIN send-keys -t "$SESSION" Right 2>/dev/null
+      $TMUX_BIN send-keys -t "$SESSION" Left 2>/dev/null
+      sleep 0.25
     done
-    return 1
+    $TMUX_BIN pipe-pane -t "$SESSION" 2>/dev/null   # stop raw capture
+    return $rc
   }
 
   # Build the Claude launch command
@@ -363,9 +392,7 @@ except:
   export PREV_USAGE_DATA=""
   [[ -f "$USAGE_FILE" ]] && PREV_USAGE_DATA=$(cat "$USAGE_FILE" 2>/dev/null)
 
-  $TMUX_BIN capture-pane -t "$SESSION" -p 2>/dev/null \
-    | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
-    | python3 -c '
+  python3 -c '
 import re, json, sys, time, os
 from datetime import datetime, timedelta, timezone
 try:
@@ -373,7 +400,17 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo
 
-lines = sys.stdin.read().split("\n")
+# Input is the raw PTY stream captured by pipe-pane, not a settled grid. Normalize
+# it: a cursor column-move (ESC[<n>G) becomes a space so "45%" and "used" — which
+# the client prints at separate columns — stay separable; remaining CSI/charset
+# escapes are stripped; CR becomes NL; progress-bar glyphs collapse to a space.
+_raw = sys.stdin.read()
+_raw = re.sub(r"\x1b\[[0-9]+G", " ", _raw)
+_raw = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", _raw)
+_raw = re.sub(r"\x1b[()][AB0]", "", _raw)
+_raw = _raw.replace("\r", "\n")
+_bar = re.compile(r"[█▌▊▉▏▎▍▋▐░▒▓]+")
+lines = [_bar.sub(" ", ln) for ln in _raw.split("\n")]
 phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
 result = {"ts": int(time.time()), "phases": phases}
 parse_warnings = []
@@ -459,53 +496,28 @@ def find_reset(lines, i, max_offset_secs=None):
 session_pct = None; session_reset_ts = None
 weekly_pct  = None; weekly_reset_ts  = None
 
-# Loose panel header detection: at least 2 of the 5 expected tab labels.
-# Anthropic has already added/renamed tabs once (Settings tab appeared on top of
-# Status/Config/Usage/Stats); a low threshold tolerates further drift while the
-# downstream "session"/"week" label check above "% used" remains the second
-# line of defense against random scrollback false-matches.
-panel_tokens = ("Settings", "Status", "Config", "Usage", "Stats")
-panel_start = -1
-for idx, ln in enumerate(lines):
-    if sum(t in ln for t in panel_tokens) >= 2:
-        panel_start = idx
-        break
-
-# Live-render check: only trust the panel if its "Esc to cancel" footer is
-# still on screen. clear-history only flushes scrollback, not the visible
-# pane — without this guard the parser keeps re-scraping closed-panel
-# residue (old % used + Resets lines) and reports it as a fresh parse,
-# silently freezing the menu on stale data while bypassing every staleness
-# guard (last_success_ts keeps refreshing, watchdog never fires).
-if panel_start >= 0 and not any("Esc to cancel" in ln for ln in lines[panel_start:]):
-    panel_start = -1
-
-# Loading-spinner guard: the Claude UI renders previous-window values + a
-# "Refreshing…" line while it loads the fresh counter. Without this guard the
-# bash side may have raced ahead of the spinner (broken timing, slow network)
-# and the parser would lock in last-window numbers as if they were fresh.
-if panel_start >= 0 and any("Refreshing" in ln for ln in lines[panel_start:]):
-    panel_start = -1
-
+# The raw stream is a chronological concatenation of every render the client
+# emitted during the poll (the tab-nudge loop typically produces several full
+# repaints). We walk it forwards keyed on the section label and, for each label,
+# take the first "<n>% used" that follows it \u2014 then clear the label so the
+# "Usage credits" bar (which also prints "% used" but is a different metric)
+# cannot be misattributed. Forward iteration overwrites earlier renders, so we
+# naturally settle on the values from the LAST (most recent) repaint.
+cur = None
 for i, line in enumerate(lines):
-    if panel_start < 0 or i < panel_start: continue
-    match = re.search(r"(\d+)% used", line)
+    if "Current session" in line: cur = "s"; continue
+    if "Current week" in line: cur = "w"; continue
+    if "Usage credits" in line: cur = None; continue
+    if cur is None: continue
+    match = re.search(r"(\d+)%\s*used", line)
     if not match: continue
     pct_val = int(match.group(1))
-    label = ""
-    # Wider lookback (5 lines) \u2014 new panel layout interleaves Total cost / Total
-    # duration / Usage rows between the section header ("Current session") and
-    # the "% used" bar, so a 2-line window can miss the label entirely.
-    for j in range(i - 1, max(i - 6, -1), -1):
-        lbl = lines[j].strip()
-        if lbl and "\u2588" not in lbl and "\u258c" not in lbl and "% used" not in lbl:
-            label = lbl; break
-    label_lower = label.lower()
-    if "session" in label_lower and session_pct is None:
-        # Session windows are 5h — cap to 5h 30min to filter day-rollover bugs
+    if cur == "s":
+        # Session windows are 5h \u2014 cap to 5h 30min to filter day-rollover bugs
         session_pct = pct_val; session_reset_ts = find_reset(lines, i, max_offset_secs=5*3600+1800)
-    elif "week" in label_lower and weekly_pct is None:
+    else:
         weekly_pct = pct_val; weekly_reset_ts = find_reset(lines, i)
+    cur = None
 
 if session_pct is not None:
     result["pct"] = session_pct
@@ -615,7 +627,7 @@ if "pct" in result and "reset_ts" in result:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         with open(log_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
-' > "$USAGE_FILE"
+' < "$RAW_LOG" > "$USAGE_FILE"
 
   # Close the usage panel
   $TMUX_BIN send-keys -t "$SESSION" Escape 2>/dev/null
