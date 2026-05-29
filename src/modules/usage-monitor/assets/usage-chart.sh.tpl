@@ -8,19 +8,20 @@
 
 set -euo pipefail
 
-USAGE_DIR="{{home}}/.local/share/claude-usage"
+USAGE_DIR="{{state_dir}}/usage"
+MARKER_LOG="{{state_dir}}/marker-log.jsonl"
 OUTPUT="/tmp/claude-usage-chart.html"
 
 PLAN_MONTHLY_COST="{{chart_plan_cost}}"
 API_COST_PER_SESSION_PCT="{{chart_api_rate}}"
 
-export USAGE_DIR PLAN_MONTHLY_COST API_COST_PER_SESSION_PCT
+export USAGE_DIR MARKER_LOG PLAN_MONTHLY_COST API_COST_PER_SESSION_PCT
 python3 << 'PYEOF' > "$OUTPUT"
 import json, sys, os, glob
 from datetime import datetime
 from collections import defaultdict
 
-USAGE_DIR = os.environ.get("USAGE_DIR", os.path.expanduser("~/.local/share/claude-usage"))
+USAGE_DIR = os.environ.get("USAGE_DIR", os.path.expanduser("~/Documents/state/claude-toolkit/usage"))
 PLAN_COST = float(os.environ.get("PLAN_MONTHLY_COST", "150"))
 API_RATE = float(os.environ.get("API_COST_PER_SESSION_PCT", "0.20"))
 
@@ -174,7 +175,7 @@ if not all_accounts:
     sys.exit(0)
 
 # ── Marker log analysis (global, not per-account) ───────
-marker_log_path = os.path.expanduser("~/.config/claude-toolkit/marker-log.jsonl")
+marker_log_path = os.environ.get("MARKER_LOG", os.path.expanduser("~/Documents/state/claude-toolkit/marker-log.jsonl"))
 marker_entries = []
 if os.path.exists(marker_log_path):
     with open(marker_log_path) as f:

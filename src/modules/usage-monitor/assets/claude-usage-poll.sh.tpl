@@ -41,7 +41,15 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 TMUX_BIN={{tmux}}
 CLAUDE={{claude}}
 CONFIG_FILE="{{config_file}}"
-USAGE_DIR="{{home}}/.local/share/claude-usage"
+USAGE_DIR="{{state_dir}}/usage"
+
+# One-time migration: usage history used to live in ~/.local/share/claude-usage.
+# Move it under the persistent (reinstall-surviving) state dir if not already done.
+_OLD_USAGE_DIR="{{home}}/.local/share/claude-usage"
+if [ -d "$_OLD_USAGE_DIR" ] && [ ! -d "$USAGE_DIR" ]; then
+  mkdir -p "$(dirname "$USAGE_DIR")"
+  mv "$_OLD_USAGE_DIR" "$USAGE_DIR" 2>/dev/null || true
+fi
 
 # ── Account discovery ───────────────────────────────────
 YQ={{yq}}

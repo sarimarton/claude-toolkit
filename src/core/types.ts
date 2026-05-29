@@ -136,6 +136,8 @@ export interface ResolvedConfig {
   launchAgentsDir: string;
   /** Claude settings directory (~/.claude) */
   claudeDir: string;
+  /** Persistent timeline state directory (~/Documents/state/claude-toolkit) — survives reinstall */
+  stateDir: string;
   /** Chart cost estimation: plan monthly cost in USD */
   chartPlanCost: number;
   /** Chart cost estimation: estimated API cost per 1% of session */

@@ -31,16 +31,24 @@ if [[ -n "$marker" ]]; then
             mv -f "$tmp" "$target"
 
             # Per-session turn counter (incremented once per Stop hook fire)
-            log_dir="$(dirname "$TOPICS_DIR")"
             counter_file="$TOPICS_DIR/.${session}.turn"
             turn=$(( $(cat "$counter_file" 2>/dev/null || echo 0) + 1 ))
             echo "$turn" > "$counter_file"
 
-            # Append to JSONL log for model/quality analysis
+            # Append to JSONL log for model/quality analysis. This is timeline data,
+            # so it lives under the persistent (reinstall-surviving) state dir.
+            marker_log="{{state_dir}}/marker-log.jsonl"
+            # One-time migration from the old ~/.config/claude-toolkit/marker-log.jsonl.
+            old_marker_log="$(dirname "$TOPICS_DIR")/marker-log.jsonl"
+            if [[ -f "$old_marker_log" && ! -f "$marker_log" ]]; then
+                mkdir -p "$(dirname "$marker_log")"
+                mv "$old_marker_log" "$marker_log" 2>/dev/null || true
+            fi
+            mkdir -p "$(dirname "$marker_log")"
             printf '{"ts":%d,"session":"%s","turn":%d,"topic":"%s","m":"%s","pct":%s,"q":"%s"}\n' \
                 "$(date +%s)" "$session" "$turn" "$topic" \
                 "${model:-?}" "${pct:--1}" "${quality:-?}" \
-                >> "$log_dir/marker-log.jsonl"
+                >> "$marker_log"
         fi
     fi
 fi

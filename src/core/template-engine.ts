@@ -22,6 +22,7 @@ export function buildVarMap(config: ResolvedConfig): Record<string, string> {
     helpers_dir: config.helpersDir,
     launch_agents_dir: config.launchAgentsDir,
     claude_dir: config.claudeDir,
+    state_dir: config.stateDir,
     chart_plan_cost: String(config.chartPlanCost),
     chart_api_rate: String(config.chartApiRate),
     poll_interval: String(config.pollIntervalSeconds),

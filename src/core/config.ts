@@ -87,6 +87,7 @@ export function resolveConfig(): ResolvedConfig {
     helpersDir,
     launchAgentsDir: path.join(HOME, 'Library', 'LaunchAgents'),
     claudeDir: path.join(HOME, '.claude'),
+    stateDir: path.join(HOME, 'Documents', 'state', 'claude-toolkit'),
     chartPlanCost: user.chart?.planMonthlyCost ?? 150,
     chartApiRate: user.chart?.apiCostPerSessionPct ?? 0.20,
     pollIntervalSeconds: user.usageMonitor?.pollIntervalSeconds ?? 300,
