@@ -66,9 +66,11 @@ jobs:
             exit 0
           fi
 
-          GLOBAL_CONFIG="$HOME/.config/claude-toolkit/global.json"
-          BAILOUT_PCT=$(jq -r '.bailout_pct // empty' "$GLOBAL_CONFIG" 2>/dev/null | head -n 1)
-          BAILOUT_PCT="${BAILOUT_PCT:-50}"
+          # Read straight from config.yaml (modules.autoDev) via the absolute yq path
+          # baked at install — this is the only config source (global.json is gone).
+          CONFIG_YAML="{{config_file}}"
+          BAILOUT_PCT=$({{yq}} -r '.modules.autoDev.bailoutPct // 75' "$CONFIG_YAML" 2>/dev/null | head -n 1)
+          case "$BAILOUT_PCT" in ''|*[!0-9]*) BAILOUT_PCT=75 ;; esac
 
           USAGE_FILE="/tmp/claude-usage.json"
           if [[ ! -f "$USAGE_FILE" ]]; then
@@ -102,8 +104,9 @@ jobs:
       - name: Load max issues from global config
         id: repo-config
         run: |
-          GLOBAL_CONFIG="$HOME/.config/claude-toolkit/global.json"
-          MAX=$(jq -r '.max_issues_per_run // empty' "$GLOBAL_CONFIG" 2>/dev/null | head -n 1)
+          CONFIG_YAML="{{config_file}}"
+          MAX=$({{yq}} -r '.modules.autoDev.maxIssuesPerRun // ""' "$CONFIG_YAML" 2>/dev/null | head -n 1)
+          case "$MAX" in *[!0-9]*) MAX="" ;; esac
           echo "max_issues=${MAX:-${{ env.MAX_ISSUES_PER_RUN }}}" >> $GITHUB_OUTPUT
 
       - name: Get issues to process
@@ -225,9 +228,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          RAW=$(gh api "repos/$GH_REPO/actions/variables/AUTO_DEV_CONFIG" 2>/dev/null | jq -r '.value' 2>/dev/null | head -n 1 || true)
-          [[ -z "$RAW" ]] && RAW='{}'
-          AUTONOMY=$(echo "$RAW" | jq -r '.autonomy // "high"' | head -n 1)
+          # Per-repo autonomy now lives in config.yaml (modules.autoDev.repos.<owner/repo>),
+          # read via the absolute yq path baked at install. Default: high.
+          CONFIG_YAML="{{config_file}}"
+          AUTONOMY=$({{yq}} -r '.modules.autoDev.repos[strenv(GH_REPO)].autonomy // "high"' "$CONFIG_YAML" 2>/dev/null | head -n 1)
           case "$AUTONOMY" in
             low)  CI=true; CP=false; PC=false ;;
             *)    AUTONOMY=high; CI=true; CP=true; PC=true ;;

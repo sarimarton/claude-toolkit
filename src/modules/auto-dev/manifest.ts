@@ -32,9 +32,9 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
   externals: [
     { binary: 'gh', description: 'GitHub CLI', required: true, installHint: 'brew install gh' },
     { binary: 'jq', description: 'JSON processor', required: true, installHint: 'brew install jq' },
+    { binary: 'yq', description: 'YAML processor (reads config.yaml at runtime)', required: true, installHint: 'brew install yq' },
     { binary: 'tmux', description: 'Terminal multiplexer', required: true, installHint: 'brew install tmux' },
     { binary: 'claude', description: 'Claude Code CLI', required: true },
-    { binary: 'gum', description: 'Charm gum (TUI tool)', required: true, installHint: 'brew install gum' },
   ],
   hooks: [],
   assets: [

@@ -43,9 +43,11 @@ jobs:
             exit 0
           fi
 
-          GLOBAL_CONFIG="$HOME/.config/claude-toolkit/global.json"
-          BAILOUT_PCT=$(jq -r '.bailout_pct // empty' "$GLOBAL_CONFIG" 2>/dev/null | head -n 1)
-          BAILOUT_PCT="${BAILOUT_PCT:-50}"
+          # Read straight from config.yaml (modules.autoDev) via the absolute yq path
+          # baked at install — this is the only config source (global.json is gone).
+          CONFIG_YAML="{{config_file}}"
+          BAILOUT_PCT=$({{yq}} -r '.modules.autoDev.bailoutPct // 75' "$CONFIG_YAML" 2>/dev/null | head -n 1)
+          case "$BAILOUT_PCT" in ''|*[!0-9]*) BAILOUT_PCT=75 ;; esac
 
           USAGE_FILE="/tmp/claude-usage.json"
           if [[ ! -f "$USAGE_FILE" ]]; then

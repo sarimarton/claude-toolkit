@@ -1,72 +1,30 @@
 #!/usr/bin/env bash
-# auto-dev-config.sh — Edit per-repo auto-dev autonomy via gum TUI.
-# Config is stored as JSON in a GitHub Actions repo variable: AUTO_DEV_CONFIG
-# Only field: {"autonomy": "high" | "low"}
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+# auto-dev-config.sh — Open the toolkit config to set a repo's auto-dev autonomy.
+#
+# Per-repo autonomy now lives in config.yaml under
+#   modules.autoDev.repos.<owner/repo>.autonomy   (high | low)
+# high: opens issues + PRs + pushes commits autonomously
+# low:  opens issues + comments only (no PRs, no pushes)
+#
+# This ensures the repo's entry exists (default high), then opens the config in the
+# default editor. No gum, no GitHub repo variable — the workflow reads config.yaml.
 
 REPO="$1"
-[[ -z "$REPO" ]] && exit 0
+[ -z "$REPO" ] && exit 0
 
-# ── If not in a terminal, relaunch self in Terminal.app ───────
-if [ ! -t 0 ]; then
-  SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-  osascript \
-    -e 'tell application "Terminal"' \
-    -e '  activate' \
-    -e "  do script \"'$SELF' '$REPO'; echo ''; read -p 'Press Enter to close...'\"" \
-    -e 'end tell'
-  exit 0
+YQ={{yq}}
+CONFIG_FILE="{{config_file}}"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  DEFAULT="{{repo_dir}}/config.default.yaml"
+  if [ -f "$DEFAULT" ]; then cp "$DEFAULT" "$CONFIG_FILE"; else : > "$CONFIG_FILE"; fi
 fi
 
-JQ={{jq}}
+# Seed this repo's autonomy entry (default high) if absent, so there's a line to edit.
+GH_REPO="$REPO" "$YQ" -i \
+  '.modules.autoDev.repos[strenv(GH_REPO)].autonomy = (.modules.autoDev.repos[strenv(GH_REPO)].autonomy // "high")' \
+  "$CONFIG_FILE" 2>/dev/null || true
 
-# ── Ensure gum is installed ───────────────────────────────────
-if ! command -v gum &>/dev/null; then
-  echo "Installing gum..."
-  brew install gum
-fi
-
-# ── Read current config ───────────────────────────────────────
-RAW=$(gh api "repos/$REPO/actions/variables/AUTO_DEV_CONFIG" --jq '.value' 2>/dev/null || echo '{}')
-CURRENT=$(echo "$RAW" | $JQ -r '.autonomy // "high"' 2>/dev/null || echo "high")
-
-# ── Header ────────────────────────────────────────────────────
-echo ""
-gum style \
-  --border rounded --border-foreground 212 \
-  --padding "0 2" --bold \
-  "Auto-dev Config: $REPO"
-echo ""
-gum style --foreground 244 "high: opens issues + PRs + pushes commits autonomously"
-gum style --foreground 244 "low:  opens issues + comments only (no PRs, no pushes)"
-echo ""
-
-# ── Autonomy selection ────────────────────────────────────────
-AUTONOMY=$(gum choose \
-  --header "Autonomy level:" \
-  --selected "$CURRENT" \
-  "high" "low")
-[[ -z "$AUTONOMY" ]] && exit 0
-
-# ── Confirm ───────────────────────────────────────────────────
-echo ""
-gum confirm "Save autonomy=$AUTONOMY for $REPO?" || exit 0
-
-# ── Build and write config ────────────────────────────────────
-NEW_CONFIG=$($JQ -nc --arg a "$AUTONOMY" '{autonomy: $a}')
-
-if gh api "repos/$REPO/actions/variables/AUTO_DEV_CONFIG" &>/dev/null 2>&1; then
-  HTTP_METHOD="PATCH"; API_PATH="repos/$REPO/actions/variables/AUTO_DEV_CONFIG"
-else
-  HTTP_METHOD="POST";  API_PATH="repos/$REPO/actions/variables"
-fi
-
-echo ""
-if gh api -X "$HTTP_METHOD" "$API_PATH" \
-     -f name="AUTO_DEV_CONFIG" -f value="$NEW_CONFIG" >/dev/null 2>&1; then
-  gum style --foreground 2 "✓ Config saved (autonomy: $AUTONOMY)"
-else
-  gum style --foreground 1 "✗ Save failed — ensure gh has repo/actions write scope:"
-  echo "  gh auth refresh -s repo"
-fi
-echo ""
+# `open` honors the user's default app for .yaml; fall back to the default text editor.
+open "$CONFIG_FILE" 2>/dev/null || open -t "$CONFIG_FILE"
