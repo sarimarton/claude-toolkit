@@ -14,13 +14,6 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
 interface UserConfig {
   paths?: Record<string, string>;
   installDir?: string;
-  chart?: {
-    planMonthlyCost?: number;
-    apiCostPerSessionPct?: number;
-  };
-  usageMonitor?: {
-    pollIntervalSeconds?: number;
-  };
   accounts?: Array<{
     name: string;
     token: string;
@@ -88,9 +81,6 @@ export function resolveConfig(): ResolvedConfig {
     launchAgentsDir: path.join(HOME, 'Library', 'LaunchAgents'),
     claudeDir: path.join(HOME, '.claude'),
     stateDir: path.join(HOME, 'Documents', 'state', 'claude-toolkit'),
-    chartPlanCost: user.chart?.planMonthlyCost ?? 150,
-    chartApiRate: user.chart?.apiCostPerSessionPct ?? 0.20,
-    pollIntervalSeconds: user.usageMonitor?.pollIntervalSeconds ?? 300,
     accounts: (user.accounts || []).map(a => ({
       name: a.name,
       token: a.token,

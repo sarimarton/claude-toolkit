@@ -1,41 +1,33 @@
 # Claude Toolkit configuration
-# Paths are auto-detected; override here if needed.
+#
+# All module settings live under `modules.<id>` and are read LIVE at runtime, so
+# editing this file takes effect without a reinstall. Binary paths are auto-detected
+# (via `which`) at install time and are not configured here.
 
-# installDir: ~/.config/claude-toolkit
+modules:
+  usageMonitor:
+    pollIntervalSeconds: 300     # Seconds between /usage polls. Each poll recreates the
+                                 # monitor's claude session (the long-lived one freezes its
+                                 # "Current session" value after ~1h), so keep this generous.
 
-# paths:
-#   tmux: /opt/homebrew/bin/tmux
-#   jq: /opt/homebrew/bin/jq
-#   claude: ~/.local/bin/claude
-#   hs: /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs
+  usageChart:
+    planMonthlyCost: 150         # Your plan's monthly cost in USD
+    apiCostPerSessionPct: 0.20   # Estimated API cost per 1% of a 5h session window
 
-# Usage chart cost estimation parameters
-chart:
-  planMonthlyCost: 150       # Your plan's monthly cost in USD
-  apiCostPerSessionPct: 0.20 # Estimated API cost per 1% of a 5h session window
-
-# Usage monitor
-usageMonitor:
-  pollIntervalSeconds: 300   # Seconds between /usage polls. Each poll recreates the
-                             # monitor's claude session (the long-lived one freezes its
-                             # "Current session" value after ~1h), so keep this generous.
+  autoDev:
+    maxIssuesPerRun: 3           # Max 'ai'-labelled issues advanced per scheduled run
+    bailoutPct: 75               # Skip a run if Claude session usage is at or above this %
+    # Per-repo autonomy override (default: high). 'high' = opens issues + PRs + pushes
+    # commits autonomously; 'low' = opens issues + comments only (no PRs, no pushes).
+    # repos:
+    #   owner/repo-name:
+    #     autonomy: low
 
 # Multi-account usage monitoring (optional)
-# Each account gets its own tmux session and JSONL log.
-# The 'primary' account is displayed in the menubar title.
+# Each account gets its own tmux session and JSONL log; 'primary' shows in the menubar title.
 # accounts:
 #   - name: Alice
 #     token: sk-ant-oat01-...
 #     primary: true
 #   - name: Bob
 #     token: sk-ant-oat01-...
-
-# Auto-dev module configuration (optional)
-# Lists repos where auto-dev is installed. Used by the SwiftBar section.
-# Run: auto-dev-runner-setup.sh <owner/repo> to install into a repo.
-# autoDev:
-#   timeBucket:
-#     minPctToStart: 50    # Skip iteration if Claude usage % >= this value
-#   repos:
-#     - github: owner/repo-name
-#       local: /Users/you/repos/repo-name

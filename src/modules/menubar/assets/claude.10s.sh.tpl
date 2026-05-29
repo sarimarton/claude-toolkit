@@ -72,12 +72,14 @@ json_str()  { grep -oE "[,{[:space:]]\"$1\":[[:space:]]*\"[^\"]*\"" "$USAGE_FILE
 json_num()  { grep -oE "[,{[:space:]]\"$1\":[[:space:]]*[0-9]+" "$USAGE_FILE" 2>/dev/null | head -1 | grep -o '[0-9]*$' ; }
 
 # ── Auto-poll: trigger refresh if data is stale ──
-# Interval comes from config.yaml (usageMonitor.pollIntervalSeconds, default 300).
-# Each poll recreates the monitor's claude session from scratch (the long-lived
-# session freezes its "Current session" value after ~1h), so we poll less often to
-# keep the per-poll ~4s claude startup churn down. /usage is a local slash command
-# (no model inference), so recreating costs startup time, not tokens.
-POLL_INTERVAL={{poll_interval}}
+# Interval is read live from config.yaml each render (modules.usageMonitor
+# .pollIntervalSeconds, default 300), so editing the config takes effect without a
+# reinstall. Each poll recreates the monitor's claude session from scratch (the
+# long-lived session freezes its "Current session" value after ~1h), so we poll less
+# often to keep the per-poll ~4s claude startup churn down. /usage is a local slash
+# command (no model inference), so recreating costs startup time, not tokens.
+POLL_INTERVAL=$({{yq}} -r '.modules.usageMonitor.pollIntervalSeconds // 300' "$CONFIG_FILE" 2>/dev/null)
+case "$POLL_INTERVAL" in ''|*[!0-9]*) POLL_INTERVAL=300 ;; esac
 POLL_LOCK="/tmp/claude-usage-poll.lock"
 
 if [[ -f "$USAGE_FILE" ]]; then

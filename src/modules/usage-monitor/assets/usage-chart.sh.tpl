@@ -12,8 +12,13 @@ USAGE_DIR="{{state_dir}}/usage"
 MARKER_LOG="{{state_dir}}/marker-log.jsonl"
 OUTPUT="/tmp/claude-usage-chart.html"
 
-PLAN_MONTHLY_COST="{{chart_plan_cost}}"
-API_COST_PER_SESSION_PCT="{{chart_api_rate}}"
+# Cost-estimation params are read live from config.yaml (modules.usageChart), so
+# editing the config takes effect without a reinstall.
+CONFIG_FILE="{{config_file}}"
+PLAN_MONTHLY_COST=$({{yq}} -r '.modules.usageChart.planMonthlyCost // 150' "$CONFIG_FILE" 2>/dev/null)
+case "$PLAN_MONTHLY_COST" in ''|*[!0-9.]*) PLAN_MONTHLY_COST=150 ;; esac
+API_COST_PER_SESSION_PCT=$({{yq}} -r '.modules.usageChart.apiCostPerSessionPct // 0.20' "$CONFIG_FILE" 2>/dev/null)
+case "$API_COST_PER_SESSION_PCT" in ''|*[!0-9.]*) API_COST_PER_SESSION_PCT=0.20 ;; esac
 
 export USAGE_DIR MARKER_LOG PLAN_MONTHLY_COST API_COST_PER_SESSION_PCT
 python3 << 'PYEOF' > "$OUTPUT"

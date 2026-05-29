@@ -138,12 +138,6 @@ export interface ResolvedConfig {
   claudeDir: string;
   /** Persistent timeline state directory (~/Documents/state/claude-toolkit) — survives reinstall */
   stateDir: string;
-  /** Chart cost estimation: plan monthly cost in USD */
-  chartPlanCost: number;
-  /** Chart cost estimation: estimated API cost per 1% of session */
-  chartApiRate: number;
-  /** Usage monitor: seconds between /usage polls (menubar auto-poll cadence) */
-  pollIntervalSeconds: number;
   /** Multi-account configurations */
   accounts: AccountConfig[];
   /** Path to the config file (for runtime reading by scripts) */
