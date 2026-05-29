@@ -275,13 +275,18 @@ echo "---"
 
 INSTALL_DIR="{{repo_dir}}"
 UPDATE_CACHE="/tmp/claude-toolkit-update-check.json"
-UPDATE_CACHE_TTL=3600  # 1 hour
+UPDATE_CACHE_TTL=60  # 1 minute — near-realtime; gh api gives 5000 req/h so this is cheap
 
 _check_update() {
     local remote_sha
-    remote_sha=$(curl -sf --max-time 5 \
-        "https://api.github.com/repos/sarimarton/claude-toolkit/commits/main" \
-        2>/dev/null | grep -m1 '"sha"' | grep -oE '[0-9a-f]{40}' | head -1)
+    # Prefer authenticated gh (5000 req/h) so we can poll often; the unauthenticated
+    # GitHub API is capped at 60 req/h, which is what forced the old long TTL.
+    remote_sha=$(gh api repos/sarimarton/claude-toolkit/commits/main --jq '.sha' 2>/dev/null | grep -oE '^[0-9a-f]{40}$')
+    if [[ -z "$remote_sha" ]]; then
+        remote_sha=$(curl -sf --max-time 5 \
+            "https://api.github.com/repos/sarimarton/claude-toolkit/commits/main" \
+            2>/dev/null | grep -m1 '"sha"' | grep -oE '[0-9a-f]{40}' | head -1)
+    fi
     [[ -z "$remote_sha" ]] && return
     local ts
     ts=$(date +%s)
