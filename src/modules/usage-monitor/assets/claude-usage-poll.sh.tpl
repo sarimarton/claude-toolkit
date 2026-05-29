@@ -499,7 +499,10 @@ for i, line in enumerate(lines):
     if cur is None: continue
     match = re.search(r"(\d+)%\s*used", line)
     if not match: continue
-    pct_val = int(match.group(1))
+    # Clamp to 100: when you tip over the budget the client briefly renders 101%
+    # (over-cap rounding artifact) before settling back to 100, which otherwise
+    # leaks into the JSON / notification / dropdown and disagrees with the panel.
+    pct_val = min(100, int(match.group(1)))
     if cur == "s":
         # Session windows are 5h \u2014 cap to 5h 30min to filter day-rollover bugs
         session_pct = pct_val; session_reset_ts = find_reset(lines, i, max_offset_secs=5*3600+1800)
