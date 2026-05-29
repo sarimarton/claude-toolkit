@@ -71,8 +71,12 @@ fi
 json_str()  { grep -oE "[,{[:space:]]\"$1\":[[:space:]]*\"[^\"]*\"" "$USAGE_FILE" 2>/dev/null | head -1 | sed "s/.*\"$1\":[[:space:]]*\"//;s/\"$//" ; }
 json_num()  { grep -oE "[,{[:space:]]\"$1\":[[:space:]]*[0-9]+" "$USAGE_FILE" 2>/dev/null | head -1 | grep -o '[0-9]*$' ; }
 
-# ── Auto-poll: trigger refresh if data is stale (>1 min) ──
-POLL_INTERVAL=60   # 1 minute — keep menu within 1-2min of the real counter
+# ── Auto-poll: trigger refresh if data is stale (>5 min) ──
+# 5 minutes: each poll recreates the monitor's claude session from scratch (the
+# long-lived session freezes its "Current session" value after ~1h), so we poll
+# less often to keep the per-poll ~4s claude startup churn down. /usage is a local
+# slash command (no model inference), so recreating costs startup time, not tokens.
+POLL_INTERVAL=300
 POLL_LOCK="/tmp/claude-usage-poll.lock"
 
 if [[ -f "$USAGE_FILE" ]]; then
@@ -104,10 +108,12 @@ phase=$(json_str phase)
 ts=$(json_num ts)
 last_success_ts=$(json_num last_success_ts)
 
-# Stale detection: a poll cycle is 180s, so anything older than ~5 min means the
-# poll has been silently failing or returning stale fallbacks. Without this guard
-# the menu can show a green "92%" while the real session usage is 33%.
-STALE_THRESHOLD=300
+# Stale detection: the poll interval is 300s and a poll cycle (claude restart +
+# /usage + parse) takes up to ~15s, so fresh data is at most ~315s old just before
+# the next poll. Anything older than ~2 missed cycles means the poll has been
+# silently failing or returning stale fallbacks. Without this guard the menu can
+# show a green "92%" while the real session usage is 33%.
+STALE_THRESHOLD=660
 is_stale=false
 stale_age_min=""
 now_check=$(date +%s)

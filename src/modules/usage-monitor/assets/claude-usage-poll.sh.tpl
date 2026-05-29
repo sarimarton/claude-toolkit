@@ -42,8 +42,6 @@ TMUX_BIN={{tmux}}
 CLAUDE={{claude}}
 CONFIG_FILE="{{config_file}}"
 USAGE_DIR="{{home}}/.local/share/claude-usage"
-STALE_RESTART_THRESHOLD=600  # seconds; if error has persisted longer, kill stuck tmux session
-MAX_SESSION_LIFETIME=7200    # seconds; cap monitor session age (defense in depth vs userland leaks in long-running claude proc)
 
 # ── Account discovery ───────────────────────────────────
 YQ={{yq}}
@@ -250,55 +248,21 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
     claude_cmd="unset ANTHROPIC_API_KEY && CLAUDE_USAGE_MON=1 $CLAUDE --dangerously-skip-permissions"
   fi
 
-  # Lifetime cap: kill the monitor session every MAX_SESSION_LIFETIME seconds even
-  # when healthy. The claude process inside the session is long-running and may
-  # accumulate userland RSS — periodic recreate bounds the leak window.
-  if $TMUX_BIN has-session -t "$SESSION" 2>/dev/null; then
-    local sess_created; sess_created=$($TMUX_BIN display-message -t "$SESSION" -p '#{session_created}' 2>/dev/null)
-    if [ -n "$sess_created" ] && [ "$sess_created" -gt 0 ] 2>/dev/null; then
-      if [ $(( $(date +%s) - sess_created )) -gt $MAX_SESSION_LIFETIME ]; then
-        $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
-      fi
-    fi
-  fi
-
-  # Watchdog: kill the tmux session if it has been failing or silently producing
-  # stale data for too long. Three triggers:
-  #   1. error_since_ts older than threshold (explicit failures: dismissed, parse_failed, …)
-  #   2. last_success_ts older than threshold (no real parse — covers the silent-fallback case
-  #      where the parser returned a stale pct without an error mező)
-  #   3. reset_ts_lost_since older than threshold (partial-parse loop: pct keeps being
-  #      scraped from scrollback but the Resets line never reappears — covers the
-  #      "Settings dialog dismissed" loop that masquerades as success)
-  if [ -f "$USAGE_FILE" ]; then
-    local err_since last_success lost_since
-    { read -r err_since; read -r last_success; read -r lost_since; } < <(python3 -c "
-import json
-try:
-    d = json.load(open('$USAGE_FILE'))
-    print(d.get('error_since_ts') or '')
-    print(d.get('last_success_ts') or '')
-    print(d.get('reset_ts_lost_since') or '')
-except:
-    print(''); print(''); print('')
-" 2>/dev/null) || true
-    local now_ts; now_ts=$(date +%s)
-    if [ -n "$err_since" ] && [ $(( now_ts - err_since )) -gt $STALE_RESTART_THRESHOLD ]; then
-      $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
-    elif [ -n "$last_success" ] && [ $(( now_ts - last_success )) -gt $STALE_RESTART_THRESHOLD ]; then
-      $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
-    elif [ -n "$lost_since" ] && [ $(( now_ts - lost_since )) -gt $STALE_RESTART_THRESHOLD ]; then
-      $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
-    fi
-  fi
+  # Recreate the monitor session from scratch on every poll. A long-lived claude
+  # process freezes its /usage "Current session" value after ~1h — it keeps showing
+  # a stale number (observed: 0 while the real value was 13%), even though weekly and
+  # the desktop app stay correct, so a persistent session silently serves wrong
+  # numbers that look like valid parses (the watchdog never fires). A fresh process
+  # always fetches correctly. /usage is a local slash command (no model inference),
+  # so this costs ~4s of startup per poll, not tokens; the poll interval is widened
+  # to 5min to match. Starting fresh also bounds any userland RSS leak to one poll,
+  # making the old lifetime-cap and stale-data watchdog redundant.
+  $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
 
   # --- Phase: session ---
   write_phase "session"
-  local created_session=false
-  if ! $TMUX_BIN has-session -t "$SESSION" 2>/dev/null; then
-    $TMUX_BIN new-session -d -s "$SESSION" -x 200 -y 50 -c "$HOME"
-    created_session=true
-  fi
+  local created_session=true
+  $TMUX_BIN new-session -d -s "$SESSION" -x 200 -y 50 -c "$HOME"
 
   # --- Phase: claude ---
   write_phase "claude"
