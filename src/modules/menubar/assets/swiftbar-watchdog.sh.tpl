@@ -62,6 +62,28 @@ if ! pgrep -x SwiftBar > /dev/null; then
 fi
 pgrep -x SwiftBar > /dev/null || { log "SwiftBar failed to start"; exit 0; }
 
+# First run since boot: a reboot leaves SwiftBar running and the plugin ticking,
+# yet the menu-bar item can come up unplaced/hidden — a state the heartbeat check
+# below cannot detect (the plugin IS running, the cache IS fresh). So once per
+# boot, re-assert the item's preferred position and hard-restart SwiftBar to force
+# it back onto the bar. Boot-scoped via kern.boottime (compared to a marker mtime)
+# so it fires exactly once per boot and never thrashes on the 5-min interval.
+BOOT_MARKER="/tmp/.swiftbar-claude-watchdog-boot"
+boot_epoch=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*{ *sec *= *\([0-9]*\).*/\1/p')
+marker_mtime=0
+[ -f "$BOOT_MARKER" ] && marker_mtime=$(stat -f %m "$BOOT_MARKER" 2>/dev/null || echo 0)
+if [ -n "$boot_epoch" ] && (( marker_mtime < boot_epoch )); then
+    : > "$BOOT_MARKER"   # mark before acting, so a crash mid-restart can't loop us
+    log "first run since boot — asserting menu-bar placement + restarting SwiftBar"
+    defaults write "$BUNDLE" "NSStatusItem Preferred Position $PLUGIN" -float 700
+    defaults write "$BUNDLE" "NSStatusItem VisibleCC $PLUGIN" -bool YES
+    killall -9 SwiftBar 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8; do pgrep -q SwiftBar || break; sleep 0.5; done
+    open -a SwiftBar
+    wait_heartbeat || true
+    exit 0
+fi
+
 # Healthy if the plugin is ticking. A stale or just-launched state gets up to
 # SETTLE_SEC to resume on its own before we resort to a hard restart — this
 # absorbs a momentary tick hiccup or a fresh-launch warm-up without thrashing.
