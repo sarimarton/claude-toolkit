@@ -171,14 +171,15 @@ if [[ -n "$MANAGED_REPOS" ]]; then
             NOW_S=$(date +%s)
 
             # Last PM report — always pinned, regardless of how many cycles followed
-            IFS=$'\x1f' read -r PM_TS PM_SUM PM_CNT PM_NEXT < <($JQ -r "$JQ_MENULABEL"'
+            IFS=$'\x1f' read -r PM_TS PM_SUM PM_CNT PM_NEXT PM_URL < <($JQ -r "$JQ_MENULABEL"'
                 [.[] | select(.agent == "pm")] |
                 if length > 0 then last |
                 [
                     ((.ts // 0) | tostring),
                     (.summary | menulabel(60)),
                     ((.actions // 0) | tostring),
-                    (.next | menulabel(80))
+                    (.next | menulabel(80)),
+                    (.run_url // "")
                 ] | join("\u001f")
                 else empty end
             ' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
@@ -191,7 +192,10 @@ if [[ -n "$MANAGED_REPOS" ]]; then
                 PM_DISPLAY="📋 $PM_AGE PM: ${PM_SUM:-(no summary)} (${PM_CNT})"
                 PM_TT=""
                 [[ -n "$PM_NEXT" ]] && PM_TT=" tooltip=$PM_NEXT"
-                echo "--$PM_DISPLAY | color=#bf5af2 size=12 href=https://github.com/$REPO/actions/workflows/auto-dev-pm.yml${PM_TT}"
+                # Link straight to the run's step summary (the report); fall back to
+                # the workflow page for older entries written before run_url existed.
+                PM_HREF="${PM_URL:-https://github.com/$REPO/actions/workflows/auto-dev-pm.yml}"
+                echo "--$PM_DISPLAY | color=#bf5af2 size=12 href=${PM_HREF}${PM_TT}"
             fi
 
             echo "-----"

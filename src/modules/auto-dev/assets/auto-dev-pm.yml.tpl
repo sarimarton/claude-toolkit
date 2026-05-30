@@ -503,13 +503,15 @@ jobs:
           STATE_DIR="$HOME/Documents/state/claude-toolkit/auto-dev"
           mkdir -p "$STATE_DIR"
           TS=$(date +%s)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           jq -nc \
             --arg ts "$TS" \
             --arg repo "$GH_REPO" \
             --arg summary "$SUMMARY" \
             --arg next "$NEXT" \
+            --arg run_url "$RUN_URL" \
             --argjson count "$ACTION_COUNT" \
-            '{ts: ($ts|tonumber), repo: $repo, agent: "pm", actions: $count, summary: $summary, next: $next}' \
+            '{ts: ($ts|tonumber), repo: $repo, agent: "pm", actions: $count, summary: $summary, next: $next, run_url: $run_url}' \
             >> "$STATE_DIR/activity.jsonl"
 
       - name: Save cursor
