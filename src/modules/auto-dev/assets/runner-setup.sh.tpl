@@ -163,7 +163,10 @@ mkdir -p "$STATE_DIR"
 # ── Step 7: Tag repo with auto-dev topic ──────────────
 echo "→ Adding 'auto-dev' topic to $REPO..."
 if gh repo edit "$REPO" --add-topic auto-dev 2>/dev/null; then
-  echo "  Topic added. The repo will appear in the Claude menu on next refresh."
+  # Invalidate the menu's managed-repo cache (1h TTL) so the new repo appears on
+  # the next render (~10s) instead of being hidden until the cache expires.
+  rm -f /tmp/claude-toolkit-auto-dev-managed.json
+  echo "  Topic added. The repo will appear in the Claude menu within ~10s."
 else
   echo "  Warning: could not add topic (non-fatal)."
 fi
