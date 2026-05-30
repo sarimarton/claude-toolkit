@@ -58,7 +58,12 @@ export function resolveConfig(): ResolvedConfig {
   let swiftbarPluginDir = path.join(HOME, '.config', 'swiftbar');
   try {
     const plist = execSync('defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null', { encoding: 'utf-8' }).trim();
-    if (plist) swiftbarPluginDir = plist;
+    // Respect an existing SwiftBar plugin dir, but never our own internal deploy
+    // dir: an earlier version pointed SwiftBar there, which evicted every other
+    // plugin the user had (SwiftBar reads exactly one dir). That value is sticky
+    // — config reads it back and install rewrites it — so ignoring it here lets
+    // the next install repoint SwiftBar at the user's real dir and recover them.
+    if (plist && plist !== swiftbarDir) swiftbarPluginDir = plist;
   } catch {
     // SwiftBar not installed or no preference set — use default
   }

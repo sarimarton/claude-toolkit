@@ -32,16 +32,41 @@ else
   brew install --cask swiftbar >&2
 fi
 
-# 2. Point SwiftBar at the plugin dir and create symlinks for deployed plugins.
-mkdir -p "$PLUGIN_DIR"
-defaults write com.ameba.SwiftBar PluginDirectory "$PLUGIN_DIR" >&2
+# 2. Make our plugin visible by living in the SHARED user SwiftBar dir, never a
+#    toolkit-private one. SwiftBar reads exactly one PluginDirectory, so we make
+#    room for everyone: we point it at the conventional ~/.config/swiftbar
+#    (PLUGIN_DIR) — even when we're the only plugin there — so the user can drop
+#    their own plugins in later with zero conflict, and we deploy ours into it as
+#    a symlink to the internal deploy dir.
+#
+# Two things we deliberately DON'T do (both were the old eviction bug):
+#   - never set SwiftBar to our internal deploy dir ($DEPLOY_DIR)
+#   - never override a plugin dir the user has already chosen for themselves
+DEPLOY_DIR_REAL=$(cd "$DEPLOY_DIR" 2>/dev/null && pwd -P || echo "$DEPLOY_DIR")
+current_dir=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
+current_real=$([ -n "$current_dir" ] && cd "$current_dir" 2>/dev/null && pwd -P || echo "$current_dir")
 
-# Symlink each deployed .sh from the internal deploy dir into the SwiftBar plugin dir.
+# Respect a user-chosen dir; discard a pref that points at our internal deploy dir
+# (self-inflicted bad state from older versions) → fall back to ~/.config/swiftbar.
+if [ -n "$current_dir" ] && [ "$current_real" != "$DEPLOY_DIR_REAL" ]; then
+  ACTIVE_DIR="$current_dir"
+else
+  ACTIVE_DIR="$PLUGIN_DIR"
+fi
+mkdir -p "$ACTIVE_DIR"
+
+# Only touch the preference when it actually needs to change — never clobber a good value.
+if [ "$current_dir" != "$ACTIVE_DIR" ]; then
+  defaults write com.ameba.SwiftBar PluginDirectory "$ACTIVE_DIR" >&2
+  echo "SwiftBar plugin dir set to: $ACTIVE_DIR" >&2
+fi
+
+# Symlink each deployed .sh from the internal deploy dir into the active plugin dir.
 # Skips real (non-symlink) files so hand-managed plugins are never overwritten.
 for deployed in "$DEPLOY_DIR"/*.sh; do
   [ -f "$deployed" ] || continue
   filename=$(basename "$deployed")
-  link="$PLUGIN_DIR/$filename"
+  link="$ACTIVE_DIR/$filename"
   if [ ! -e "$link" ] || [ -L "$link" ]; then
     ln -sfn "$deployed" "$link"
   fi
@@ -62,4 +87,4 @@ if [ -f "$WATCHDOG_PLIST" ]; then
   echo "SwiftBar watchdog LaunchAgent loaded." >&2
 fi
 
-echo "SwiftBar configured — plugins: $PLUGIN_DIR" >&2
+echo "SwiftBar configured — plugins: $ACTIVE_DIR" >&2
