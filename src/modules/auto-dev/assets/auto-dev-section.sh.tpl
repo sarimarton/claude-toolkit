@@ -75,6 +75,12 @@ MANAGED_REPOS=""
 CANDIDATE_REPOS=""
 [[ -f "$CANDIDATES_CACHE" ]] && CANDIDATE_REPOS=$($JQ -r '.repos[]?' "$CANDIDATES_CACHE" 2>/dev/null)
 
+# Shared jq filter for menu labels: todo/summary/next fields are raw markdown
+# (PR checklist lines, LLM output) flattened into a plain-text SwiftBar menu.
+# Strip backticks (`) keeping their content, collapse whitespace, escape the
+# pipe separator (→ │ ∣), then truncate with a trailing … (…) only if cut.
+JQ_MENULABEL='def menulabel($n): (. // "") | gsub("`"; "") | gsub("\\s+"; " ") | gsub("[|]"; "∣") | (if (. | length) > $n then .[0:($n-1)] + "…" else . end);'
+
 # ── Managed repos (top-scope) ─────────────────────────────
 
 if [[ -n "$MANAGED_REPOS" ]]; then
@@ -102,7 +108,7 @@ if [[ -n "$MANAGED_REPOS" ]]; then
             REPO_ENTRIES_JSON=$($JQ -sc --arg r "$REPO" \
                 '[.[] | select(.repo == $r)]' "$ACTIVITY_LOG" 2>/dev/null)
             IFS=$'\x1f' read -r LAST_OUTCOME LAST_TODO < <(
-                $JQ -r 'last // {} | [(.outcome // ""), ((.todo // "") | .[0:30])] | join("")' \
+                $JQ -r "$JQ_MENULABEL"'last // {} | [(.outcome // ""), (.todo | menulabel(30))] | join("")' \
                     2>/dev/null <<< "$REPO_ENTRIES_JSON"
             )
         fi
@@ -165,14 +171,14 @@ if [[ -n "$MANAGED_REPOS" ]]; then
             NOW_S=$(date +%s)
 
             # Last PM report — always pinned, regardless of how many cycles followed
-            IFS=$'\x1f' read -r PM_TS PM_SUM PM_CNT PM_NEXT < <($JQ -r '
+            IFS=$'\x1f' read -r PM_TS PM_SUM PM_CNT PM_NEXT < <($JQ -r "$JQ_MENULABEL"'
                 [.[] | select(.agent == "pm")] |
                 if length > 0 then last |
                 [
                     ((.ts // 0) | tostring),
-                    ((.summary // "") | .[0:60]),
+                    (.summary | menulabel(60)),
                     ((.actions // 0) | tostring),
-                    ((.next // "") | gsub("[|]"; "\u2223") | .[0:80])
+                    (.next | menulabel(80))
                 ] | join("\u001f")
                 else empty end
             ' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
@@ -217,12 +223,12 @@ if [[ -n "$MANAGED_REPOS" ]]; then
                     else
                         echo "--$DISPLAY | color=$COLOR size=12"
                     fi
-                done < <($JQ -r '
+                done < <($JQ -r "$JQ_MENULABEL"'
                     [.[] | select((.agent // "auto-dev") != "pm")] | .[-5:] | reverse[] |
                     [
                         ((.ts // 0) | tostring),
                         (.outcome // "?"),
-                        ((.todo // "") | split("\n")[0] | gsub("`[^`]*`"; "…") | gsub("`"; "") | .[0:40]),
+                        (.todo | menulabel(40)),
                         (.pr // "")
                     ] | join("\u001f")
                 ' 2>/dev/null <<< "$REPO_ENTRIES_JSON")
