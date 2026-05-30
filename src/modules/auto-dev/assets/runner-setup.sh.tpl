@@ -30,15 +30,11 @@ LOCAL_PATH="${2:-}"
 
 if [[ -z "$REPO" ]]; then
   JQ={{jq}}
-  CANDIDATES_CACHE="/tmp/claude-toolkit-auto-dev-candidates.json"
 
-  # Build repo list: prefer cache, fall back to live gh call
-  if [[ -f "$CANDIDATES_CACHE" ]]; then
-    REPO_LIST=$($JQ -r '.repos[]?' "$CANDIDATES_CACHE" 2>/dev/null)
-  else
-    REPO_LIST=$(gh repo list --json nameWithOwner --limit 50 2>/dev/null \
-      | $JQ -r '.[].nameWithOwner' 2>/dev/null)
-  fi
+  # Build repo list live (picker is rare; always fresh so new repos show up).
+  # Candidates = repos WITHOUT the auto-dev topic, sorted case-insensitively.
+  REPO_LIST=$(gh repo list --json nameWithOwner,repositoryTopics --limit 100 2>/dev/null \
+    | $JQ -r '[.[] | select((.repositoryTopics // []) | map(.name) | contains(["auto-dev"]) | not) | .nameWithOwner] | sort_by(ascii_downcase) | .[]' 2>/dev/null)
 
   if [[ -n "$REPO_LIST" ]]; then
     # Build AppleScript list: {"owner/a", "owner/b", ...}

@@ -33,7 +33,6 @@ if [[ "$AUTOSTART" == "true" ]]; then
 fi
 
 MANAGED_CACHE="/tmp/claude-toolkit-auto-dev-managed.json"
-CANDIDATES_CACHE="/tmp/claude-toolkit-auto-dev-candidates.json"
 CACHE_TTL=3600
 
 # ── Cache helpers ─────────────────────────────────────────
@@ -47,20 +46,18 @@ _cache_age() {
     echo $(( $(date +%s) - ts ))
 }
 
+# Only the managed list is cached — it drives the per-render section every ~10s.
+# Candidate (install-picker) repos are fetched live on demand by auto-dev-install.sh.
 _refresh_repos() {
-    local all ts managed candidates
+    local all ts managed
     all=$(gh repo list --json nameWithOwner,repositoryTopics --limit 50 2>/dev/null)
     [[ -z "$all" ]] && return
     ts=$(date +%s)
     managed=$(echo "$all" | $JQ -r \
         '[.[] | select((.repositoryTopics // []) | map(.name) | contains(["auto-dev"])) | .nameWithOwner] | sort' \
         2>/dev/null)
-    candidates=$(echo "$all" | $JQ -r \
-        '[.[] | select((.repositoryTopics // []) | map(.name) | contains(["auto-dev"]) | not) | .nameWithOwner] | sort' \
-        2>/dev/null)
-    [[ -z "$managed" || -z "$candidates" ]] && return
+    [[ -z "$managed" ]] && return
     printf '{"repos":%s,"ts":%s}\n' "$managed" "$ts" > "$MANAGED_CACHE"
-    printf '{"repos":%s,"ts":%s}\n' "$candidates" "$ts" > "$CANDIDATES_CACHE"
 }
 
 if (( $(_cache_age "$MANAGED_CACHE") > CACHE_TTL )); then
@@ -71,9 +68,6 @@ fi
 
 MANAGED_REPOS=""
 [[ -f "$MANAGED_CACHE" ]] && MANAGED_REPOS=$($JQ -r '.repos[]?' "$MANAGED_CACHE" 2>/dev/null)
-
-CANDIDATE_REPOS=""
-[[ -f "$CANDIDATES_CACHE" ]] && CANDIDATE_REPOS=$($JQ -r '.repos[]?' "$CANDIDATES_CACHE" 2>/dev/null)
 
 # Shared jq filter for menu labels: todo/summary/next fields are raw markdown
 # (PR checklist lines, LLM output) flattened into a plain-text SwiftBar menu.

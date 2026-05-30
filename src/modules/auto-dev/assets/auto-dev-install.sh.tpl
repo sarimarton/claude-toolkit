@@ -7,15 +7,13 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:
 SCRIPTS_DIR='{{scripts_dir}}'
 SETUP="$SCRIPTS_DIR/auto-dev-runner-setup.sh"
 JQ={{jq}}
-CANDIDATES_CACHE="/tmp/claude-toolkit-auto-dev-candidates.json"
 
 # ── Build repo list ──────────────────────────────────────
-if [[ -f "$CANDIDATES_CACHE" ]]; then
-  REPO_LIST=$($JQ -r '.repos[]?' "$CANDIDATES_CACHE" 2>/dev/null)
-else
-  REPO_LIST=$(gh repo list --json nameWithOwner,repositoryTopics --limit 50 2>/dev/null \
-    | $JQ -r '[.[] | select((.repositoryTopics // []) | map(.name) | contains(["auto-dev"]) | not) | .nameWithOwner] | sort | .[]' 2>/dev/null)
-fi
+# Always query live: this picker is opened rarely (only when adding a repo), so a
+# stale cache would just hide a freshly-created repo. Sort case-insensitively so
+# the list reads naturally. Candidates = repos WITHOUT the auto-dev topic.
+REPO_LIST=$(gh repo list --json nameWithOwner,repositoryTopics --limit 100 2>/dev/null \
+  | $JQ -r '[.[] | select((.repositoryTopics // []) | map(.name) | contains(["auto-dev"]) | not) | .nameWithOwner] | sort_by(ascii_downcase) | .[]' 2>/dev/null)
 
 if [[ -z "$REPO_LIST" ]]; then
   osascript -e 'display alert "Auto-dev Setup" message "No candidate repos found. Check gh auth and try Refresh caches." as warning' >/dev/null
