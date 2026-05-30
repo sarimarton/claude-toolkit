@@ -23,14 +23,25 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PAT
 # Serving the 10s-old cached output on click makes the menu appear instantly.
 _MENU_CACHE="/tmp/claude-menu-raw.txt"
 _MENU_CACHE_TTL=9
-if [[ -f "$_MENU_CACHE" ]]; then
+# Serve the cache only when it is non-empty (-s, not -f). SwiftBar removes the
+# menu-bar item entirely whenever a plugin produces no stdout, so serving a
+# 0-byte cache made the icon vanish until the next non-cached render. A 0-byte
+# cache can be left behind by a killed or raced writer (see below), so the read
+# side must guard against it too.
+if [[ -s "$_MENU_CACHE" ]]; then
     _cache_age=$(( $(date +%s) - $(stat -f %m "$_MENU_CACHE" 2>/dev/null || echo 0) ))
     if (( _cache_age < _MENU_CACHE_TTL )); then
         cat "$_MENU_CACHE"
         exit 0
     fi
 fi
-exec > >(tee "$_MENU_CACHE.tmp"; mv "$_MENU_CACHE.tmp" "$_MENU_CACHE")
+# Race-free cache publish. SwiftBar runs this plugin concurrently (the 10s
+# background tick + a refreshOnOpen run on click); a shared .tmp path let those
+# runs truncate the file out from under each other and the unconditional mv could
+# then publish an empty cache — which SwiftBar renders as a disappeared icon.
+# Write to a per-PID temp and only promote it to the live cache if it has content.
+_MENU_CACHE_TMP="$_MENU_CACHE.$$.tmp"
+exec > >(tee "$_MENU_CACHE_TMP"; if [[ -s "$_MENU_CACHE_TMP" ]]; then mv "$_MENU_CACHE_TMP" "$_MENU_CACHE"; else rm -f "$_MENU_CACHE_TMP"; fi)
 
 POLL_SCRIPT="{{scripts_dir}}/claude-usage-poll.sh"
 TMUX_BIN={{tmux}}

@@ -235,6 +235,17 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
       if grep -aq "Current session" "$RAW_LOG" 2>/dev/null && grep -aqE '[0-9]+%.{0,20}used' "$RAW_LOG" 2>/dev/null; then
         rc=0; break
       fi
+      # Loaded-but-zero: at 0% session usage the client renders the limits
+      # *breakdown* ("What's contributing to your limits usage?") but no
+      # "Current session … % used" bar — and the bar never flashes, so pipe-pane
+      # can't catch one either. The breakdown only paints once the local-session
+      # scan finishes, so its presence with NO "% used" anywhere in the stream is
+      # a reliable "fully loaded, nothing used" signal. Accept it so the parser
+      # records a real 0% instead of looping to the 25s timeout → usage_unavailable
+      # → stale menu. (Distinct from a slow scan, which shows neither.)
+      if grep -aq "contributing to your limits" "$RAW_LOG" 2>/dev/null && ! grep -aqE '[0-9]+%.{0,20}used' "$RAW_LOG" 2>/dev/null; then
+        rc=0; break
+      fi
       if grep -aq "Failed to load usage data" "$RAW_LOG" 2>/dev/null; then
         grep -aq "rate_limit_error" "$RAW_LOG" 2>/dev/null && rc=0 || rc=1
         break
@@ -509,6 +520,17 @@ for i, line in enumerate(lines):
     else:
         weekly_pct = pct_val; weekly_reset_ts = find_reset(lines, i)
     cur = None
+
+# Loaded-but-zero (see the acquisition loop): the limits breakdown only renders
+# after the local-session scan completes, so its presence with no "Current
+# session … % used" bar means the session is genuinely at 0% — the client draws
+# no bar at zero usage. Record it as a real 0% parse rather than parse_failed.
+# Safe against a slow scan: a slow scan shows neither the bar nor the breakdown.
+panel_loaded = any("contributing to your limits" in ln.lower() for ln in lines)
+if panel_loaded and session_pct is None:
+    session_pct = 0
+if panel_loaded and weekly_pct is None:
+    weekly_pct = 0
 
 if session_pct is not None:
     result["pct"] = session_pct
