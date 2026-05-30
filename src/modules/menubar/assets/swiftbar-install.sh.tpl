@@ -61,15 +61,18 @@ if [ "$current_dir" != "$ACTIVE_DIR" ]; then
   echo "SwiftBar plugin dir set to: $ACTIVE_DIR" >&2
 fi
 
-# Symlink each deployed .sh from the internal deploy dir into the active plugin dir.
-# Skips real (non-symlink) files so hand-managed plugins are never overwritten.
+# Deploy each of our .sh plugins into the active dir as a REAL FILE copy — never a
+# symlink. SwiftBar does not reliably load a symlinked plugin whose target lives
+# outside the plugin dir: the script still runs on schedule (its output cache keeps
+# updating), but the menu-bar item never appears. The identical file copied in
+# place shows up immediately. This loop only iterates OUR deployed plugins, so it
+# never touches the user's own hand-managed plugins (vpn, wiredleak, …) in the dir.
 for deployed in "$DEPLOY_DIR"/*.sh; do
   [ -f "$deployed" ] || continue
-  filename=$(basename "$deployed")
-  link="$ACTIVE_DIR/$filename"
-  if [ ! -e "$link" ] || [ -L "$link" ]; then
-    ln -sfn "$deployed" "$link"
-  fi
+  dest="$ACTIVE_DIR/$(basename "$deployed")"
+  rm -f "$dest"            # clear any old symlink or stale copy
+  cp "$deployed" "$dest"
+  chmod +x "$dest"
 done
 
 # 3. Launch (or refresh) SwiftBar so the menu shows up immediately.
