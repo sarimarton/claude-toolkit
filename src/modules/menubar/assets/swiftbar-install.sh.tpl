@@ -70,14 +70,26 @@ fi
 for deployed in "$DEPLOY_DIR"/*.sh; do
   [ -f "$deployed" ] || continue
   dest="$ACTIVE_DIR/$(basename "$deployed")"
-  rm -f "$dest"            # clear any old symlink or stale copy
+  # Clear a symlink or a stray directory: `rm -f` alone cannot remove a directory,
+  # so a leftover "claude.10s.sh/" dir would silently block the copy and leave
+  # SwiftBar with no plugin. For an existing regular file we DON'T rm — cp
+  # overwrites in place, keeping the inode so SwiftBar sees a modify rather than a
+  # delete+create (the latter drops the menu-bar item).
+  if [ -L "$dest" ] || [ -d "$dest" ]; then rm -rf "$dest"; fi
   cp "$deployed" "$dest"
   chmod +x "$dest"
 done
 
-# 3. Launch (or refresh) SwiftBar so the menu shows up immediately.
+# 3. (Re)launch SwiftBar so the menu shows up immediately. A plain
+# refreshallplugins is NOT enough after we replace a plugin file: SwiftBar drops
+# the menu-bar item on the change and refresh does not recreate it — only a
+# relaunch does (confirmed: killall brings it back, refresh doesn't). Detach the
+# relaunch with sleeps so it outlives this script, which is itself a SwiftBar
+# child when run from the "Update" menu item (killall would otherwise tear down
+# our own process tree before the relaunch fires).
 if pgrep -x SwiftBar >/dev/null 2>&1; then
-  open "swiftbar://refreshallplugins" >/dev/null 2>&1 || true
+  ( sleep 1; killall SwiftBar 2>/dev/null; sleep 1; open -a SwiftBar >/dev/null 2>&1 ) >/dev/null 2>&1 &
+  disown 2>/dev/null || true
 else
   open -a SwiftBar >/dev/null 2>&1 || true
 fi
