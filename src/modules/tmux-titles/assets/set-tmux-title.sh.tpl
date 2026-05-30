@@ -8,6 +8,12 @@
 
 TOPICS_DIR="{{install_dir}}/topics"
 
+# Stop-hook stdin carries the Claude session UUID (session_id) and cwd as JSON.
+# We record these so the menu can resume a session that a reboot/crash left dead.
+payload=$(cat 2>/dev/null)
+claude_uuid=$(printf '%s' "$payload" | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"session_id"[[:space:]]*:[[:space:]]*"//; s/"$//')
+claude_cwd=$(printf '%s' "$payload" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"cwd"[[:space:]]*:[[:space:]]*"//; s/"$//')
+
 marker=$({{tmux}} capture-pane -p -S -100 2>/dev/null | grep '(\$topic:' | tail -1)
 
 if [[ -n "$marker" ]]; then
@@ -49,6 +55,25 @@ if [[ -n "$marker" ]]; then
                 "$(date +%s)" "$session" "$turn" "$topic" \
                 "${model:-?}" "${pct:--1}" "${quality:-?}" \
                 >> "$marker_log"
+
+            # Resume index: tmux-resurrect restores the "✻ topic" window after a
+            # reboot, but Claude itself is gone. Record session→UUID here so the
+            # menu can offer an on-demand resume. Keyed by (session, UUID) on write
+            # — one row per Claude session, refreshing its current window-name —
+            # and matched by (session, window-name) on recovery, which works because
+            # the row always carries the latest $topic, the same value resurrect
+            # restores into the window name. Lives under the persistent state dir so
+            # it survives the reboot it exists to recover from.
+            if [[ -n "$claude_uuid" ]]; then
+                resume_index="{{state_dir}}/resume-index.tsv"
+                win_name="✻ $topic"
+                [[ -z "$claude_cwd" ]] && claude_cwd=$({{tmux}} display-message -p '#{pane_current_path}' 2>/dev/null)
+                mkdir -p "$(dirname "$resume_index")"
+                tmp_idx="$resume_index.$$.tmp"
+                awk -F'\t' -v s="$session" -v u="$claude_uuid" '!($1==s && $3==u)' "$resume_index" 2>/dev/null > "$tmp_idx"
+                printf '%s\t%s\t%s\t%s\t%s\n' "$session" "$win_name" "$claude_uuid" "$claude_cwd" "$(date +%s)" >> "$tmp_idx"
+                mv -f "$tmp_idx" "$resume_index"
+            fi
         fi
     fi
 fi

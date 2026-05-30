@@ -479,9 +479,9 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
 
     # Build display line with ANSI multi-color
     if (( attached > 0 )); then
-        bullet="${A_YELLOW}●"
+        bullet="${A_YELLOW}●"   # attached → filled yellow
     else
-        bullet="${A_DIM}○"
+        bullet="${A_YELLOW}○"   # detached but alive → hollow yellow
     fi
 
     line_body="${A_DIM}[$short_path]"
@@ -516,6 +516,34 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
     echo "${alt_line} | ansi=true size=13 alternate=true bash=$HELPERS/claude-kill.sh param1=$sess_name terminal=false refresh=true"
 
 done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_title}	#{pane_id}	#{window_id}" 2>/dev/null)
+
+# ── Dead (restorable) sessions — rebooted/crashed panes ──
+# tmux-resurrect brings the "✻ topic" windows back after a reboot, but Claude is
+# gone, so those panes run a plain shell and fall out of the live loop above. List
+# them with a hollow gray ○ and resume on click using the UUID the Stop hook
+# recorded, matched by (session, window-name). Latest matching row wins.
+RESUME_INDEX="{{state_dir}}/resume-index.tsv"
+if [[ -f "$RESUME_INDEX" ]]; then
+    while IFS=$'\t' read -r sess_name attached win_name proc path pane_id window_id; do
+        [[ "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && continue   # alive → already listed above
+        [[ "$sess_name" == "claude_usage_mon" ]] && continue
+        case "$win_name" in "✻ "*) ;; *) continue ;; esac        # only topic windows
+        case "$seen_windows" in *"|$window_id|"*) continue ;; esac
+        seen_windows="${seen_windows}|${window_id}|"
+
+        rec=$(awk -F'\t' -v s="$sess_name" -v w="$win_name" '$1==s && $2==w {l=$0} END{print l}' "$RESUME_INDEX")
+        [[ -z "$rec" ]] && continue
+        uuid=$(printf '%s' "$rec" | cut -f3)
+        [[ -z "$uuid" ]] && continue
+        has_sessions=true
+
+        short_path="${path/#$HOME_DIR/\~}"
+        topic_text="${win_name#✻ }"
+        line_body="${A_DIM}[$short_path] ${A_DIM}» ${A_MAGENTA}${topic_text}"
+        line="${A_DIM}○ ${line_body}${A_RST}  $(printf '\xe2\xa0\x80')"
+        echo "$line | ansi=true size=13 tooltip=Resume bash=$HELPERS/claude-resume.sh param1=$sess_name param2=$pane_id param3=$uuid terminal=false refresh=true"
+    done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_id}	#{window_id}" 2>/dev/null)
+fi
 
 if ! $has_sessions; then
     echo "No active sessions | size=11 color=#888888 sfimage=moon.zzz"
