@@ -2,10 +2,11 @@
 # auto-dev-runner-control.sh — Start, stop, or query status of a self-hosted runner
 #
 # Usage:
-#   auto-dev-runner-control.sh start  <owner/repo>
-#   auto-dev-runner-control.sh stop   <owner/repo>
-#   auto-dev-runner-control.sh status <owner/repo>
+#   auto-dev-runner-control.sh start     <owner/repo>
+#   auto-dev-runner-control.sh stop      <owner/repo>
+#   auto-dev-runner-control.sh status    <owner/repo>
 #   auto-dev-runner-control.sh list
+#   auto-dev-runner-control.sh start-all  (start every set-up runner that is stopped)
 
 set -euo pipefail
 
@@ -56,6 +57,32 @@ if [[ "$ACTION" == "list" ]]; then
       echo "$repo  running  (session: $sess)"
     else
       echo "$repo  stopped"
+    fi
+  done
+  exit 0
+fi
+
+# ── start-all ──────────────────────────────────────────
+# Start every locally set-up runner that is currently stopped. Iterates the
+# runner dirs (the local source of truth), not any network-fetched repo list, so
+# it works at boot before the menu's GitHub topic cache is populated.
+if [[ "$ACTION" == "start-all" ]]; then
+  [[ -d "$RUNNERS_DIR" ]] || { echo "No runners configured."; exit 0; }
+  for dir in "$RUNNERS_DIR"/*/; do
+    [[ -d "$dir" ]] || continue
+    [[ -f "${dir}run.sh" ]] || continue
+    if [[ -f "${dir}.repo-name" ]]; then
+      repo=$(cat "${dir}.repo-name")
+    else
+      slug="${dir%/}"; slug="${slug##*/}"
+      repo="${slug/-//}"
+    fi
+    sess=$(session_name "$repo")
+    if $TMUX_BIN has-session -t "$sess" 2>/dev/null; then
+      echo "$repo already running"
+    else
+      $TMUX_BIN new-session -d -s "$sess" -c "${dir%/}" './run.sh'
+      echo "Runner started for $repo (session: $sess)"
     fi
   done
   exit 0

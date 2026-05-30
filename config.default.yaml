@@ -19,6 +19,8 @@ modules:
     apiCostPerSessionPct: 0.20
 
   autoDev:
+    # Auto-start every set-up runner once per boot, when the menu first renders.
+    autostartRunners: true
     # Max 'ai'-labelled issues advanced per scheduled run.
     maxIssuesPerRun: 3
     # Skip a run if Claude session usage is at or above this %.

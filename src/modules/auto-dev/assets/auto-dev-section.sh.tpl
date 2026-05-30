@@ -9,9 +9,28 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 SCRIPTS_DIR="{{scripts_dir}}"
 HOME_DIR="{{home}}"
 JQ={{jq}}
+YQ={{yq}}
 TMUX_BIN={{tmux}}
+CONFIG_FILE="{{config_file}}"
 STATE_DIR="$HOME_DIR/Documents/state/claude-toolkit/auto-dev"
 ACTIVITY_LOG="$STATE_DIR/activity.jsonl"
+
+# ── Auto-start runners once per boot ──────────────────────
+# The menu renders right after SwiftBar launches at login, so this is the natural
+# "menu startup" hook. A boot marker (kern.boottime vs marker mtime — same pattern
+# as the swiftbar watchdog) makes it fire exactly once per boot, never on the
+# recurring ~10s render. start-all itself is idempotent (skips running sessions).
+AUTOSTART=$($YQ -r '.modules.autoDev.autostartRunners // true' "$CONFIG_FILE" 2>/dev/null)
+if [[ "$AUTOSTART" == "true" ]]; then
+    BOOT_MARKER="/tmp/.auto-dev-autostart-boot"
+    boot_epoch=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*{ *sec *= *\([0-9]*\).*/\1/p')
+    marker_mtime=0
+    [[ -f "$BOOT_MARKER" ]] && marker_mtime=$(stat -f %m "$BOOT_MARKER" 2>/dev/null || echo 0)
+    if [[ -n "$boot_epoch" ]] && (( marker_mtime < boot_epoch )); then
+        : > "$BOOT_MARKER"   # mark before acting, so a crash can't loop us
+        ( bash "$SCRIPTS_DIR/auto-dev-runner-control.sh" start-all ) &>/dev/null &
+    fi
+fi
 
 MANAGED_CACHE="/tmp/claude-toolkit-auto-dev-managed.json"
 CANDIDATES_CACHE="/tmp/claude-toolkit-auto-dev-candidates.json"
