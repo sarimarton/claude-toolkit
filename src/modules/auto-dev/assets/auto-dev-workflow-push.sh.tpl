@@ -43,12 +43,14 @@ cp "$REBASE_WORKFLOW_SRC" "$WORKFLOW_DIR/auto-dev-rebase.yml"
 cd "$TEMP_CLONE"
 git add .github/workflows/auto-dev-cycle.yml .github/workflows/auto-dev-label.yml .github/workflows/auto-dev-pm.yml .github/workflows/auto-dev-rebase.yml
 if git diff --cached --quiet; then
-  echo "  Workflows already up to date, no new commit needed."
+  RESULT="Workflows already up to date"
+  echo "  $RESULT, no new commit needed."
 else
   git commit -m "ci: update auto-dev workflows"
   echo "→ Pushing to $DEFAULT_BRANCH..."
   git push origin "HEAD:$DEFAULT_BRANCH"
-  echo "  Workflows pushed."
+  RESULT="Workflows pushed to $DEFAULT_BRANCH"
+  echo "  $RESULT."
 fi
 
 # ── Ensure GitHub Project board (idempotent, local gh auth) ──
@@ -56,6 +58,6 @@ fi
 echo "→ Ensuring GitHub Project board for $REPO..."
 "$SCRIPTS_DIR/auto-dev-project-ensure.sh" "$REPO"
 
-osascript -e "display notification \"Workflows pushed for $REPO\" with title \"Claude Toolkit\" subtitle \"Auto-dev Reinstall\"" 2>/dev/null || true
+osascript -e "display notification \"✓ $RESULT for $REPO\" with title \"Claude Toolkit\" subtitle \"Auto-dev Reinstall\"" 2>/dev/null || true
 echo ""
 echo "✓ Workflow push complete for $REPO"
