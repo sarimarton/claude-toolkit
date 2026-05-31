@@ -73,7 +73,8 @@ if [[ "${HAS_STATUS:-0}" == "0" ]]; then
   fi
 fi
 
-# ── Persist the repo→project mapping for the (future) runner-side sync ─
+# ── Persist the repo→project mapping for the runner-side sync ─────────
+# (auto-dev-project-sync.sh reads this each cycle to mirror labels → board)
 PROJECT_URL=$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json 2>/dev/null | $JQ -r '.url // ""')
 TMP=$(mktemp)
 $JQ --arg repo "$REPO" --arg owner "$OWNER" --argjson num "$PROJECT_NUMBER" --arg url "$PROJECT_URL" \

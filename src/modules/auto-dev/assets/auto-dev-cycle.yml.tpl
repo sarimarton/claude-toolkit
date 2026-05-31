@@ -891,6 +891,14 @@ jobs:
           [[ -n "$PCT_AFTER" ]] && ENTRY=$(echo "$ENTRY" | jq --argjson v "$PCT_AFTER"          '. + {usage_pct_after: $v}')
           echo "$ENTRY" >> "$STATE_DIR/activity.jsonl"
 
+      - name: Mirror state to project board
+        if: always() && steps.state.outputs.state != 'skip'
+        run: |
+          # Read-only mirror of the issue's ai:* labels onto its Projects V2 board.
+          # The script strips GH_TOKEN internally so its board calls use the machine's
+          # project-scoped gh login; non-fatal by design (never breaks the cycle).
+          "{{scripts_dir}}/auto-dev-project-sync.sh" "${{ github.repository }}" "$ISSUE_NUMBER" || true
+
       - name: Update repo status summary
         if: always() && steps.state.outputs.state != 'skip'
         env:
