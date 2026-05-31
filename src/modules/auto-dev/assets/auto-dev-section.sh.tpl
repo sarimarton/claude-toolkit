@@ -64,6 +64,23 @@ if (( $(_cache_age "$MANAGED_CACHE") > CACHE_TTL )); then
     ( _refresh_repos ) &>/dev/null &
 fi
 
+# ── gh `project` scope check (cached) ─────────────────────
+# auto-dev-project-ensure.sh needs the `project` scope; without it the workflow
+# push half-succeeds (workflows land, board ensure fails). Surface it in the menu.
+# `gh auth status` reads the local token scopes (no API call); cache by mtime.
+GH_SCOPE_CACHE="/tmp/.auto-dev-gh-scope"
+GH_SCOPE_TTL=3600
+_gh_scope_age=99999
+[[ -f "$GH_SCOPE_CACHE" ]] && _gh_scope_age=$(( $(date +%s) - $(stat -f %m "$GH_SCOPE_CACHE" 2>/dev/null || echo 0) ))
+if (( _gh_scope_age > GH_SCOPE_TTL )); then
+    if gh auth status 2>&1 | grep -i 'token scopes' | grep -q project; then
+        echo ok > "$GH_SCOPE_CACHE"
+    else
+        echo missing > "$GH_SCOPE_CACHE"
+    fi
+fi
+GH_SCOPE_STATUS=$(cat "$GH_SCOPE_CACHE" 2>/dev/null)
+
 # ── Read data ─────────────────────────────────────────────
 
 MANAGED_REPOS=""
@@ -79,6 +96,10 @@ JQ_MENULABEL='def menulabel($n): (. // "") | gsub("`"; "") | gsub("\\s+"; " ") |
 
 if [[ -n "$MANAGED_REPOS" ]]; then
     echo "---"
+
+    if [[ "$GH_SCOPE_STATUS" == "missing" ]]; then
+        echo "⚠ gh: missing 'project' scope — click to fix | color=#ff9f0a size=12 bash=$SCRIPTS_DIR/auto-dev-gh-fix-scope.sh terminal=false refresh=true"
+    fi
 
     while IFS= read -r REPO; do
         [[ -z "$REPO" ]] && continue

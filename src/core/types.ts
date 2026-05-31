@@ -72,6 +72,14 @@ export interface ExternalDependency {
   required: boolean;
   /** Install hint for the user */
   installHint?: string;
+  /**
+   * Optional capability check run after the binary is found. A shell command
+   * that must exit 0 for the dependency to be considered satisfied (e.g. verify
+   * a CLI is authenticated or has a required scope). If it fails, `fixHint` is shown.
+   */
+  checkCommand?: string;
+  /** Remediation hint shown when `checkCommand` fails (e.g. a command to run). */
+  fixHint?: string;
 }
 
 /** Module manifest — the complete definition of a module */

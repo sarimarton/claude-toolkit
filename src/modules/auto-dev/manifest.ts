@@ -30,7 +30,15 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
     { module: 'usage-monitor', type: 'hard' },
   ],
   externals: [
-    { binary: 'gh', description: 'GitHub CLI', required: true, installHint: 'brew install gh' },
+    {
+      binary: 'gh',
+      description: 'GitHub CLI (auth + project scope)',
+      required: true,
+      installHint: 'brew install gh && gh auth login',
+      // Project board ensure (auto-dev-project-ensure.sh) needs the `project` scope.
+      checkCommand: `gh auth status 2>&1 | grep -i 'token scopes' | grep -q project`,
+      fixHint: 'gh auth refresh -s project,read:project',
+    },
     { binary: 'jq', description: 'JSON processor', required: true, installHint: 'brew install jq' },
     { binary: 'yq', description: 'YAML processor (reads config.yaml at runtime)', required: true, installHint: 'brew install yq' },
     { binary: 'tmux', description: 'Terminal multiplexer', required: true, installHint: 'brew install tmux' },
@@ -78,6 +86,12 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
       source: 'auto-dev-reregister.sh.tpl',
       target: 'scripts',
       filename: 'auto-dev-reregister.sh',
+      executable: true,
+    },
+    {
+      source: 'auto-dev-gh-fix-scope.sh.tpl',
+      target: 'scripts',
+      filename: 'auto-dev-gh-fix-scope.sh',
       executable: true,
     },
     {

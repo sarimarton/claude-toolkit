@@ -116,6 +116,19 @@ export function DoctorReport() {
             status: ext.required ? 'error' : 'warn',
             detail: ext.installHint,
           });
+          continue;
+        }
+        // Binary present — run the optional capability check (auth, scopes, …).
+        if (ext.checkCommand) {
+          try {
+            execSync(ext.checkCommand, { encoding: 'utf-8', stdio: 'ignore' });
+          } catch {
+            results.push({
+              label: `${s.manifest.id}: ${ext.binary} capability check failed`,
+              status: ext.required ? 'error' : 'warn',
+              detail: ext.fixHint || ext.description,
+            });
+          }
         }
       }
     }
