@@ -18,30 +18,61 @@
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-# ── Short-lived output cache — eliminates click-open lag ──
-# SwiftBar runs this script every 10s (background) + on dropdown open (blocking).
-# Serving the 10s-old cached output on click makes the menu appear instantly.
+# ── Cache-first rendering — the display path NEVER does slow work ──
+# SwiftBar runs this script in two situations: every 10s (background tick) and on
+# every dropdown open (refreshOnOpen, blocking). The full render below is heavy,
+# especially at boot — it enumerates tmux panes (slow while tmux-resurrect is still
+# restoring them), runs git/gh update checks, and shells out to auto-dev. If that
+# heavy render ran synchronously on a dropdown open, two bad things happened:
+#   1. The click felt slow ("Starting Claude…" lingered for seconds).
+#   2. When the slow run finally finished, SwiftBar rebuilt the *already-open*
+#      NSMenu, which dismisses it — the menu "disappeared" out from under the click.
+# Fix: the foreground (display) invocation ONLY ever serves the cache, and kicks the
+# refresh off in a detached background process. SwiftBar therefore always gets
+# instant output and never rebuilds the open menu mid-interaction. The heavy render
+# runs under CLAUDE_MENU_RENDER=1 and writes only to the cache, never to SwiftBar.
 _MENU_CACHE="/tmp/claude-menu-raw.txt"
 _MENU_CACHE_TTL=9
-# Serve the cache only when it is non-empty (-s, not -f). SwiftBar removes the
-# menu-bar item entirely whenever a plugin produces no stdout, so serving a
-# 0-byte cache made the icon vanish until the next non-cached render. A 0-byte
-# cache can be left behind by a killed or raced writer (see below), so the read
-# side must guard against it too.
-if [[ -s "$_MENU_CACHE" ]]; then
-    _cache_age=$(( $(date +%s) - $(stat -f %m "$_MENU_CACHE" 2>/dev/null || echo 0) ))
-    if (( _cache_age < _MENU_CACHE_TTL )); then
+_RENDER_LOCK="/tmp/claude-menu-render.lock"
+
+_spawn_bg_render() {
+    # One render at a time — ticks/clicks during an in-flight render are no-ops.
+    # Detach from SwiftBar's stdout pipe (>/dev/null) so the foreground can exit
+    # immediately; SwiftBar treats the plugin as done once its pipe hits EOF.
+    if [[ -f "$_RENDER_LOCK" ]] && kill -0 "$(cat "$_RENDER_LOCK" 2>/dev/null)" 2>/dev/null; then
+        return
+    fi
+    CLAUDE_MENU_RENDER=1 bash "$0" >/dev/null 2>&1 &
+    echo $! > "$_RENDER_LOCK"
+}
+
+if [[ "$CLAUDE_MENU_RENDER" != "1" ]]; then
+    # ── Display path: serve cache, refresh in background, exit fast ──
+    # Serve the cache regardless of age (a stale render already carries its own ⚠
+    # markers); a slow synchronous render is never worth a dismissed/vanished menu.
+    if [[ -s "$_MENU_CACHE" ]]; then
         cat "$_MENU_CACHE"
+        _cache_age=$(( $(date +%s) - $(stat -f %m "$_MENU_CACHE" 2>/dev/null || echo 0) ))
+        (( _cache_age >= _MENU_CACHE_TTL )) && _spawn_bg_render
         exit 0
     fi
+    # No cache yet (fresh boot / cleared /tmp): show a lightweight placeholder so the
+    # icon appears instantly, and build the real menu in the background. The next
+    # tick (≤10s) serves the real cache. Emitting non-empty output here is essential
+    # — SwiftBar removes the menu-bar item entirely on empty stdout.
+    printf '\033[38;5;214m✻ \033[38;5;243m…\033[0m | ansi=true size=12\n'
+    _spawn_bg_render
+    exit 0
 fi
-# Race-free cache publish. SwiftBar runs this plugin concurrently (the 10s
-# background tick + a refreshOnOpen run on click); a shared .tmp path let those
-# runs truncate the file out from under each other and the unconditional mv could
-# then publish an empty cache — which SwiftBar renders as a disappeared icon.
-# Write to a per-PID temp and only promote it to the live cache if it has content.
+
+# ── Render path (CLAUDE_MENU_RENDER=1): build the menu and publish it ──
+# Reached only via _spawn_bg_render, detached from SwiftBar's stdout pipe. Output
+# goes to a per-PID temp that is promoted to the live cache only when non-empty, so
+# a killed or raced writer can never publish a 0-byte cache (which SwiftBar would
+# render as a vanished icon).
+trap 'rm -f "$_RENDER_LOCK"' EXIT
 _MENU_CACHE_TMP="$_MENU_CACHE.$$.tmp"
-exec > >(tee "$_MENU_CACHE_TMP"; if [[ -s "$_MENU_CACHE_TMP" ]]; then mv "$_MENU_CACHE_TMP" "$_MENU_CACHE"; else rm -f "$_MENU_CACHE_TMP"; fi)
+exec > >(tee "$_MENU_CACHE_TMP" >/dev/null; if [[ -s "$_MENU_CACHE_TMP" ]]; then mv "$_MENU_CACHE_TMP" "$_MENU_CACHE"; else rm -f "$_MENU_CACHE_TMP"; fi)
 
 POLL_SCRIPT="{{scripts_dir}}/claude-usage-poll.sh"
 TMUX_BIN={{tmux}}
