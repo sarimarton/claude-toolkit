@@ -9,7 +9,10 @@
 # The function syncs settings.json from ~/.claude → ~/.claude-apikey
 # (injecting apiKeyHelper) on every invocation, so both dirs stay in sync.
 
-CLAUDE_BIN={{claude}}
+# Prefer the TCC-stable launcher (stable-claude-bin module) so macOS file-access
+# grants survive Claude's silent version updates; fall back to the version symlink.
+CLAUDE_BIN={{scripts_dir}}/claude-stable
+[[ -x "$CLAUDE_BIN" ]] || CLAUDE_BIN={{claude}}
 CLAUDE_APIKEY_DIR="$HOME/.claude-apikey"
 
 claude() {

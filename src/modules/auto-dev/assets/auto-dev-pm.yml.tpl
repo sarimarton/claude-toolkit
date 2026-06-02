@@ -343,7 +343,8 @@ jobs:
             "required": ["summary","next","report","actions"]
           }'
 
-          RESULT=$(claude --dangerously-skip-permissions --model claude-opus-4-7 --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/pm-prompt.txt")" 2>"$WORK_DIR/pm-stderr.txt") || true
+          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model claude-opus-4-7 --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/pm-prompt.txt")" 2>"$WORK_DIR/pm-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/pm-result.json"
 
           ACTION_COUNT=$(jq '.structured_output.actions | length' "$WORK_DIR/pm-result.json" 2>/dev/null || echo "0")

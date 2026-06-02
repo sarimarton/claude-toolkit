@@ -377,7 +377,8 @@ jobs:
           } > "$WORK_DIR/evaluate-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"decision":{"type":"string","enum":["epic","clarify","ready","blocked"]},"comment":{"type":"string"},"architecture_overview":{"type":"string"},"lhf":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"]}},"questions":{"type":"string"},"summary":{"type":"string"},"approach":{"type":"string"},"reason":{"type":"string"}},"required":["decision"]}'
-          RESULT=$(claude --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
+          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/evaluate-result.json"
 
           DECISION=$(jq -r '.structured_output.decision // "error"' "$WORK_DIR/evaluate-result.json" 2>/dev/null || echo "error")
@@ -583,7 +584,8 @@ jobs:
           } > "$WORK_DIR/plan-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"string"}}},"required":["tasks"]}'
-          RESULT=$(claude --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
+          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/plan-result.json"
 
           TASKS=$(jq -c '.structured_output.tasks // []' "$WORK_DIR/plan-result.json" 2>/dev/null || echo "[]")
@@ -720,7 +722,8 @@ jobs:
           } > "$WORK_DIR/implement-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"status":{"type":"string","enum":["completed","blocked","question"]},"summary":{"type":"string"},"reason":{"type":"string"},"suggestion":{"type":"string"},"text":{"type":"string"},"context":{"type":"string"}},"required":["status"]}'
-          RESULT=$(claude --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
+          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/implement-result.json"
 
           STATUS=$(jq -r '.structured_output.status // "error"' "$WORK_DIR/implement-result.json" 2>/dev/null || echo "error")

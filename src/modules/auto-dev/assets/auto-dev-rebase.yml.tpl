@@ -238,7 +238,8 @@ jobs:
             printf 'over the general confidence threshold.\n' >> $WORK_DIR/rebase-prompt.txt
           fi
 
-          cat $WORK_DIR/rebase-prompt.txt | ${{ env.HOME }}/.local/bin/claude -p \
+          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN="${{ env.HOME }}/.local/bin/claude"
+          cat $WORK_DIR/rebase-prompt.txt | "$CLAUDE_BIN" -p \
             --model opus \
             --allowedTools 'Bash,Read,Edit,Write,Glob,Grep' \
             > $WORK_DIR/rebase-report.txt
