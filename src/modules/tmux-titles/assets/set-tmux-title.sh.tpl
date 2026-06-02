@@ -6,6 +6,14 @@
 [[ -z "$TMUX" ]] && exit 0
 [[ -n "$DICTATION_HOOK_RUNNING" ]] && exit 0
 
+# Forward the window name (#W, set below via rename-window) to the host terminal's
+# tab/title, prefixed with the pane id so each iTerm control-mode (`-CC`) tab shows
+# which pane it is — control mode renders no tmux status bar or pane border, so the
+# tab title is the only channel left. `s/%%//` strips the leading `%` from #D
+# (`%513` → `513`); `%%` is how a literal `%` is escaped inside a tmux format.
+# Idempotent: re-applied on every Stop, harmless if already set.
+{{tmux}} set -g set-titles-string '#{s/%%//:pane_id} | #W' 2>/dev/null
+
 TOPICS_DIR="{{install_dir}}/topics"
 
 # Stop-hook stdin carries the Claude session UUID (session_id) and cwd as JSON.
