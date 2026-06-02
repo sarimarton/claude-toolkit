@@ -1,7 +1,7 @@
 #!/bin/sh
 # auto-dev-attach.sh — Open Terminal.app and attach to the runner's tmux session.
 # Usage: auto-dev-attach.sh <session_name>
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 SESS="$1"
 [[ -z "$SESS" ]] && exit 1

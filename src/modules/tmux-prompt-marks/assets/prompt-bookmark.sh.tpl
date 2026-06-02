@@ -30,7 +30,7 @@ case "$action" in
     fi
 
     # tmux's run-shell PATH is minimal; pull in Homebrew where fzf-tmux lives.
-    export PATH="/opt/homebrew/bin:$PATH"
+    export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:$PATH"
     if ! command -v fzf-tmux >/dev/null 2>&1; then
       tmux display-message "fzf-tmux required for bookmark menu (brew install fzf)"
       exit 0

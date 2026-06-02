@@ -30,6 +30,19 @@ function which(binary: string, fallback: string): string {
   }
 }
 
+/** First existing Homebrew bin path for a tool, across the standard prefixes and
+ *  a user-space prefix (~/homebrew on a sudo-less/MDM machine). Used as which()'s
+ *  fallback when PATH lookup fails. */
+function brewFallback(name: string): string {
+  const candidates = [
+    `${HOME}/homebrew/bin/${name}`,
+    `${HOME}/.homebrew/bin/${name}`,
+    `/opt/homebrew/bin/${name}`,
+    `/usr/local/bin/${name}`,
+  ];
+  return candidates.find((c) => fs.existsSync(c)) ?? `/opt/homebrew/bin/${name}`;
+}
+
 /** Load user config from config.yaml (if exists) */
 function loadUserConfig(): UserConfig {
   if (!fs.existsSync(CONFIG_FILE)) return {};
@@ -69,9 +82,9 @@ export function resolveConfig(): ResolvedConfig {
   }
 
   return {
-    tmux: p.tmux || which('tmux', '/opt/homebrew/bin/tmux'),
-    jq: p.jq || which('jq', '/opt/homebrew/bin/jq'),
-    yq: p.yq || which('yq', '/opt/homebrew/bin/yq'),
+    tmux: p.tmux || which('tmux', brewFallback('tmux')),
+    jq: p.jq || which('jq', brewFallback('jq')),
+    yq: p.yq || which('yq', brewFallback('yq')),
     claude: p.claude || which('claude', path.join(HOME, '.local/bin/claude')),
     hs: p.hs || '/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs',
     home: HOME,

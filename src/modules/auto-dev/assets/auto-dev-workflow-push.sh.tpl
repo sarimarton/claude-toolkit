@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 SCRIPTS_DIR="{{scripts_dir}}"
 WORKFLOW_SRC="$SCRIPTS_DIR/auto-dev-cycle.yml"

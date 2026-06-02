@@ -12,7 +12,7 @@
 # Usage: auto-dev-project-ensure.sh <owner/repo>
 
 set -euo pipefail
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 JQ={{jq}}
 HOME_DIR="{{home}}"

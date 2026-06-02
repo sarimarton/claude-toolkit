@@ -1,7 +1,7 @@
 #!/bin/bash
 # auto-dev-reregister.sh — SwiftBar "Re-register Runner…" action for a managed repo.
 # Phase 1: confirmation dialog. Phase 2: open Terminal.app running runner-setup.sh.
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 REPO="$1"
 [[ -z "$REPO" ]] && exit 0

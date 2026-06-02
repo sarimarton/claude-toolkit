@@ -4,7 +4,7 @@
 # notifies via macOS notification on success/failure (handled by the worker).
 # The worker is copied to /tmp first so `reinstall` (which rewrites scripts_dir)
 # can't clobber it mid-run.
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 TMUX_BIN={{tmux}}
 SESSION="claude_toolkit_update"

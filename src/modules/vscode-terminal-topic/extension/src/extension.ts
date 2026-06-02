@@ -11,6 +11,20 @@ const TOPICS_DIR = path.join(
 )
 const ACTIVE_TERMINAL_FILE = '/tmp/vscode-active-terminal.json'
 
+// exec() runs via /bin/sh with a minimal PATH, so resolve the tmux binary up
+// front across the standard prefixes and a user-space ~/homebrew (sudo-less/MDM).
+function resolveTmux(): string {
+  const home = process.env.HOME || ''
+  const candidates = [
+    `${home}/homebrew/bin/tmux`,
+    `${home}/.homebrew/bin/tmux`,
+    '/opt/homebrew/bin/tmux',
+    '/usr/local/bin/tmux',
+  ]
+  return candidates.find((c) => { try { return fs.existsSync(c) } catch { return false } }) ?? 'tmux'
+}
+const TMUX_BIN = resolveTmux()
+
 interface TopicData {
   topic: string
   completeness?: number
@@ -290,7 +304,7 @@ function syncActiveTerminalFromTmux() {
     if (!pid) return
     // Ask tmux which session this client is viewing, then look up the topic file
     exec(
-      `/opt/homebrew/bin/tmux list-clients -F '#{client_pid} #{session_name}' 2>/dev/null | grep '^${pid} '`,
+      `${TMUX_BIN} list-clients -F '#{client_pid} #{session_name}' 2>/dev/null | grep '^${pid} '`,
       (err, stdout) => {
         if (err || !stdout?.trim()) return
         const sessionName = stdout.trim().split(' ').slice(1).join(' ')

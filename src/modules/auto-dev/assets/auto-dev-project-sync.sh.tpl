@@ -18,7 +18,7 @@
 # Usage: auto-dev-project-sync.sh <owner/repo> <issue-number>
 
 set -uo pipefail
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 JQ={{jq}}
 HOME_DIR="{{home}}"

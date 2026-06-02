@@ -2,7 +2,7 @@
 # auto-dev-install.sh — SwiftBar "Install Auto-dev to repo…" action
 # Phase 1 (here): show native repo picker dialog — no terminal needed.
 # Phase 2 (Terminal.app): run runner-setup.sh with the chosen repo.
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 SCRIPTS_DIR='{{scripts_dir}}'
 SETUP="$SCRIPTS_DIR/auto-dev-runner-setup.sh"

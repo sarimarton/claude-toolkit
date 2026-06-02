@@ -3,7 +3,7 @@
 # Phase 1: confirmation dialog. Phase 2: run the workflow push detached in a tmux
 # session (no Terminal window) — mirrors the menubar "Update available" flow.
 # The push script notifies on success itself; this launcher adds the failure path.
-export PATH="/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
+export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:{{home}}/.local/bin:/usr/bin:/bin:$PATH"
 
 REPO="$1"
 [[ -z "$REPO" ]] && exit 0
