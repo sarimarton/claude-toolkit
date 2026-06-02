@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # claude-attach.sh — Attach to a detached Claude session by opening a new terminal tab.
 # Terminal is configurable via modules.menubar.terminal (default: iterm).
-#   iterm   — open a new iTerm tab running `tmux attach-session` directly.
+#   iterm   — open a new iTerm tab running `tmux -CC attach-session` (native CC integration).
 #   ghostty — write a signal file and let ghostty-tmux.sh pick it up (legacy flow).
 # Usage: claude-attach.sh <session_name>
 
@@ -29,19 +29,24 @@ if [[ -f "$CONFIG_FILE" ]]; then
 fi
 
 attach_iterm() {
-    # Open a new iTerm tab (or a window if none exists) and attach directly.
-    # `exec` replaces the shell with tmux, so detaching/closing the session closes the tab.
-    local cmd="exec $TMUX_BIN attach-session -t '$SESSION'"
+    # Open a new iTerm tab (or a window if none exists) and attach in tmux
+    # control-mode (-CC), so iTerm renders the session as native tabs/windows.
+    #
+    # The launch command is passed via the AppleScript `command` parameter, which
+    # OVERRIDES the default profile's Custom Command (which would otherwise run
+    # `tmux -CC new-session -A -s main`). Without this override the tab runs two
+    # tmux invocations — the profile's `main` attach AND our attach — producing a
+    # nested control-mode session that iTerm dumps as raw `%extended-output` text
+    # ("Cannot attach — already attached to this session").
+    local cmd="$TMUX_BIN -CC attach-session -t '$SESSION'"
     osascript >/dev/null 2>&1 <<APPLESCRIPT
 tell application "iTerm"
     activate
     if (count of windows) = 0 then
-        set w to (create window with default profile)
-        tell current session of w to write text "$cmd"
+        create window with default profile command "$cmd"
     else
         tell current window
-            set t to (create tab with default profile)
-            tell current session of t to write text "$cmd"
+            create tab with default profile command "$cmd"
         end tell
     end if
 end tell
