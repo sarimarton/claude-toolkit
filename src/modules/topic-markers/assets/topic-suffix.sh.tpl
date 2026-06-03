@@ -40,35 +40,48 @@ fi
 # ── Output ───────────────────────────────────────────────────────────────────
 cat <<'EOF'
 FONTOS: Minden válaszod legvégére tegyél egy üres sort, majd EGY sorban
-a session markerét a lenti formátumban.
+a session markerét PONTOSAN a lenti sablon szerint.
 
-Formátum: ($topic: <téma 5-10 szóban> | $pct: <0-100> | $q: <s|o|h><+|-|?>)
+SABLON (másold betűről-betűre, csak a <…> helyőrzőket töltsd ki):
+($topic: <téma 5-10 szóban> | $pct: <0-100> | $q: <s|o|h><+|-|?>)
 
-$topic — a session FŐ CÉLJA, a session nyelvén. NEM az aktuális lépés vagy
-  a legutóbbi részfeladat, hanem a nagyobb szándék, ami köré az egész munka szerveződik.
+A három kulcs — "$topic", "$pct", "$q" — KÖTELEZŐ, FIX LITERÁL, a dollárjellel
+együtt. Karakterre pontosan így kell megjelenniük. SOHA ne fordítsd le, ne
+nevezd át, és ne hagyd el a dollárjelet. Tilos bármi más kulcsnév.
 
-  Alapértelmezés: a topic stabil. Csak erős indokra váltson. Ha bizonytalan vagy,
-  maradjon az előző topic — inkább legyen kicsit elavult, mint érzékenyen csapongó.
+  ROSSZ:  (diagnózis: … | pct: 25 | q: o?)      ← "$topic" lefordítva, $ jelek elhagyva
+  ROSSZ:  (topic: … | $pct: 25 | $q: o?)        ← hiányzó $ a "topic" előtt
+  ROSSZ:  ($téma: … | $haladás: 25 | $q: o?)    ← lefordított kulcsnevek
+  JÓ:     ($topic: … | $pct: 25 | $q: o?)       ← mindhárom kulcs fix literál
 
-  NEM topic-váltó (a főcélt szolgáló kiegészítés → topic marad):
+A mezők JELENTÉSE (ez csak útmutató a KITÖLTÉSHEZ — a kulcsnév marad a fenti literál):
+
+TÉMA (a "$topic" mező értéke) — a session FŐ CÉLJA, a session nyelvén. NEM az
+  aktuális lépés vagy a legutóbbi részfeladat, hanem a nagyobb szándék, ami köré
+  az egész munka szerveződik.
+
+  Alapértelmezés: a téma stabil. Csak erős indokra váltson. Ha bizonytalan vagy,
+  maradjon az előző téma — inkább legyen kicsit elavult, mint érzékenyen csapongó.
+
+  NEM témaváltó (a főcélt szolgáló kiegészítés → a téma marad):
   - Munkafolyamat-akciók: commit, push, gh issue/PR nyitása, branch váltás, rebase, merge
   - Follow-up részfeladatok: verifikáció, teszt futtatás, hibajavítás, tuning, cleanup
   - Kiegészítő munka ugyanabban a kontextusban: UI input hozzáadása a már módosított
     flow-hoz, dokumentáció frissítés a most írt kódhoz, CI config illesztése az új
     paraméterhez, stb.
   - Példa: ha a főcél "loglevel build param", és a user utána CI workflow log_level
-    input-ot kér hozzá, az ugyanaz a topic — NEM lesz belőle "CI workflow input".
+    input-ot kér hozzá, az ugyanaz a téma — NEM lesz belőle "CI workflow input".
 
-  CSAK AKKOR váltson a topic, ha a user érdemben új, önálló főcélt indít, ami
+  CSAK AKKOR váltson a téma, ha a user érdemben új, önálló főcélt indít, ami
   egyértelműen más területre vezet (másik feature, másik probléma, másik kódrész).
 
-$pct — a feladat haladása 0-100 között.
+HALADÁS (a "$pct" mező értéke) — a feladat haladása 0-100 között.
   Becsüld a teljes beszélgetés alapján, beleértve:
   - A user tónusát (elégedettség, kérdezősség, megerősítés)
   - A session dinamikáját (tervezés=10-30, implementáció=40-70, tesztelés/finalizálás=70-95, kész=100)
-  - Ha scope change történt, a pct az új scope-hoz viszonyítson.
+  - Ha scope change történt, a haladás az új scope-hoz viszonyítson.
 
-$q — kétjegyű kód: modell + előző válasz minősége.
+MINŐSÉG (a "$q" mező értéke) — kétjegyű kód: modell + előző válasz minősége.
   Első jegy (modell): s=Sonnet, o=Opus, h=Haiku
   Második jegy (minőség — a JELENLEGI turn értékeli az ELŐZŐ infert):
   - "+" — az előző infer helyes és hasznos volt
