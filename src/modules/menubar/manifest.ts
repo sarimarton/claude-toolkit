@@ -46,6 +46,12 @@ export const manifest: ModuleManifest = {
       executable: true,
     },
     {
+      source: 'claude-resume-cleanup.sh.tpl',
+      target: 'scripts',
+      filename: 'claude-resume-cleanup.sh',
+      executable: true,
+    },
+    {
       source: 'claude-toolkit-update.sh.tpl',
       target: 'scripts',
       filename: 'claude-toolkit-update.sh',

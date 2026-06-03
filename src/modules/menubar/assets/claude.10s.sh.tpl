@@ -579,8 +579,17 @@ done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#
 # tmux-resurrect brings the "✻ topic" windows back after a reboot, but Claude is
 # gone, so those panes run a plain shell and fall out of the live loop above. List
 # them with a hollow gray ○ and resume on click using the UUID the Stop hook
-# recorded, matched by (session, window-name). Latest matching row wins.
+# recorded, matched by (session, window-name).
+#
+# A matching row is only worth showing if its UUID still has a session file on
+# disk — otherwise `claude --resume <uuid>` greets the user with "No conversation
+# found". The Stop hook now keeps one row per (session, window-name), but older
+# indexes piled up many rows (one per rotated UUID), most of them ephemeral with
+# no surviving .jsonl. So we walk the matching rows newest-first and pick the
+# first UUID whose <uuid>.jsonl exists anywhere under the project store; if none
+# survives, the topic is unrecoverable and we skip it entirely (no dead ○).
 RESUME_INDEX="{{state_dir}}/resume-index.tsv"
+PROJ_ROOT="$HOME_DIR/.claude/projects"
 if [[ -f "$RESUME_INDEX" ]]; then
     while IFS=$'\t' read -r sess_name attached win_name proc path pane_id window_id; do
         [[ "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && continue   # alive → already listed above
@@ -589,10 +598,15 @@ if [[ -f "$RESUME_INDEX" ]]; then
         case "$seen_windows" in *"|$window_id|"*) continue ;; esac
         seen_windows="${seen_windows}|${window_id}|"
 
-        rec=$(awk -F'\t' -v s="$sess_name" -v w="$win_name" '$1==s && $2==w {l=$0} END{print l}' "$RESUME_INDEX")
-        [[ -z "$rec" ]] && continue
-        uuid=$(printf '%s' "$rec" | cut -f3)
-        [[ -z "$uuid" ]] && continue
+        # Candidate UUIDs for this (session, window-name), newest row last.
+        uuid=""
+        while IFS= read -r cand; do
+            [[ -z "$cand" ]] && continue
+            if compgen -G "$PROJ_ROOT"/*/"$cand".jsonl >/dev/null 2>&1; then
+                uuid="$cand"   # keep scanning; newer survivors override
+            fi
+        done < <(awk -F'\t' -v s="$sess_name" -v w="$win_name" '$1==s && $2==w {print $3}' "$RESUME_INDEX")
+        [[ -z "$uuid" ]] && continue   # no surviving session file → unrecoverable
         has_sessions=true
 
         short_path="${path/#$HOME_DIR/\~}"
@@ -600,6 +614,12 @@ if [[ -f "$RESUME_INDEX" ]]; then
         line_body="${A_DIM}[$short_path] ${A_DIM}» ${A_MAGENTA}${topic_text}"
         line="${A_DIM}○ ${line_body}${A_RST}  $(printf '\xe2\xa0\x80')"
         echo "$line | ansi=true size=13 tooltip=Resume bash=$HELPERS/claude-resume.sh param1=$sess_name param2=$pane_id param3=$uuid terminal=false refresh=true"
+
+        # Alternate (Option held): ✕ cleans up — drop the index rows for this
+        # (session, window-name) and close the resurrected shell pane, so the dead
+        # topic disappears from the menu entirely.
+        cleanup_line="${A_DIM}○ ${line_body} ${A_RED}✕${A_RST}"
+        echo "$cleanup_line | ansi=true size=13 alternate=true tooltip=Remove bash=$HELPERS/claude-resume-cleanup.sh param1=$sess_name param2=$win_name param3=$pane_id terminal=false refresh=true"
     done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_id}	#{window_id}" 2>/dev/null)
 fi
 

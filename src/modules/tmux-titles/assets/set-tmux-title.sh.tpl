@@ -77,19 +77,22 @@ if [[ -n "$marker" ]]; then
 
             # Resume index: tmux-resurrect restores the "✻ topic" window after a
             # reboot, but Claude itself is gone. Record session→UUID here so the
-            # menu can offer an on-demand resume. Keyed by (session, UUID) on write
-            # — one row per Claude session, refreshing its current window-name —
-            # and matched by (session, window-name) on recovery, which works because
-            # the row always carries the latest $topic, the same value resurrect
-            # restores into the window name. Lives under the persistent state dir so
-            # it survives the reboot it exists to recover from.
+            # menu can offer an on-demand resume. Keyed by (session, window-name)
+            # on write — ONE row per (session, topic), refreshing its UUID to the
+            # latest one — and matched by the same key on recovery, which works
+            # because resurrect restores exactly this window name. Keying on the
+            # UUID instead would append a fresh row every turn (the UUID rotates on
+            # compaction/continuation), piling up dozens of rows whose newest UUID
+            # is usually an ephemeral one with no surviving .jsonl — the very bug
+            # that made resume pick a "No conversation found" target. Lives under
+            # the persistent state dir so it survives the reboot it recovers from.
             if [[ -n "$claude_uuid" ]]; then
                 resume_index="{{state_dir}}/resume-index.tsv"
                 win_name="✻ $topic"
                 [[ -z "$claude_cwd" ]] && claude_cwd=$({{tmux}} display-message -p '#{pane_current_path}' 2>/dev/null)
                 mkdir -p "$(dirname "$resume_index")"
                 tmp_idx="$resume_index.$$.tmp"
-                awk -F'\t' -v s="$session" -v u="$claude_uuid" '!($1==s && $3==u)' "$resume_index" 2>/dev/null > "$tmp_idx"
+                awk -F'\t' -v s="$session" -v w="$win_name" '!($1==s && $2==w)' "$resume_index" 2>/dev/null > "$tmp_idx"
                 printf '%s\t%s\t%s\t%s\t%s\n' "$session" "$win_name" "$claude_uuid" "$claude_cwd" "$(date +%s)" >> "$tmp_idx"
                 mv -f "$tmp_idx" "$resume_index"
             fi
