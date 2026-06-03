@@ -22,12 +22,23 @@ payload=$(cat 2>/dev/null)
 claude_uuid=$(printf '%s' "$payload" | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"session_id"[[:space:]]*:[[:space:]]*"//; s/"$//')
 claude_cwd=$(printf '%s' "$payload" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"cwd"[[:space:]]*:[[:space:]]*"//; s/"$//')
 
-marker=$({{tmux}} capture-pane -p -S -100 2>/dev/null | grep '(\$topic:' | tail -1)
+# Pin every tmux operation to the pane the hook actually runs in ($TMUX_PANE),
+# not tmux's "current window". Under `-CC` (control-mode) attach the `main`
+# session can hold several windows, and the active one need not be the pane
+# whose buffer carries this turn's marker — without -t the capture reads the
+# wrong buffer and rename-window retitles the wrong window (marker lands on a
+# tab that isn't ours, ours stays "zsh"). $TMUX_PANE is always this pane.
+PANE="${TMUX_PANE:-}"
+
+# Scan a generous slice of scrollback (-S -2000), not just 100 lines: after a
+# long turn or large tool output the marker scrolls well past 100 lines, the
+# grep comes up empty, and rename-window never fires (window stays "zsh").
+marker=$({{tmux}} capture-pane ${PANE:+-t "$PANE"} -p -S -2000 2>/dev/null | grep '(\$topic:' | tail -1)
 
 if [[ -n "$marker" ]]; then
     topic=$(echo "$marker" | sed 's/.*\$topic: *//; s/ *|.*//')
     if [[ -n "$topic" ]]; then
-        {{tmux}} rename-window "✻ $topic" 2>/dev/null
+        {{tmux}} rename-window ${PANE:+-t "$PANE"} "✻ $topic" 2>/dev/null
 
         pct=$(echo "$marker" | sed -n 's/.*\$pct:[[:space:]]*\([0-9]*\).*/\1/p')
         q_raw=$(echo "$marker" | sed -n 's/.*\$q:[[:space:]]*\([soh][+?-]\).*/\1/p')
