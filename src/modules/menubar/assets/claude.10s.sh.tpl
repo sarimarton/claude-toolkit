@@ -466,6 +466,33 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
     old_hash=""
     [[ -f "$peek_hash_file" ]] && old_hash=$(cat "$peek_hash_file")
 
+    # Native recap shortcut: Claude Code writes "※ recap: ... (disable recaps in /config)"
+    # into the pane buffer. When a fresh one is present we use it verbatim as the peek
+    # (it comes from the main model with full session context) and skip the haiku call.
+    # The recap is terminal-wrapped across multiple lines, so we join the marker→tail span.
+    recap=$(echo "$pane_buf" | awk '
+        /※[[:space:]]*recap:/ { buf=$0; cap=1; next }
+        cap {
+            buf=buf " " $0
+            if ($0 ~ /\(disable recaps in \/config\)/) { last=buf; cap=0 }
+        }
+        END { if (last != "") print last; else if (cap && buf != "") print buf }
+    ' | sed -E 's/.*※[[:space:]]*recap:[[:space:]]*//; s/[[:space:]]*\(disable recaps in \/config\)[[:space:]]*$//; s/[[:space:]]+/ /g; s/[[:space:]]*$//')
+    # Locality guard: only trust the recap if it sits near the buffer bottom (not an
+    # old, scrolled-past one above fresh activity).
+    if [[ -n "$recap" ]]; then
+        lines_after=$(echo "$pane_buf" | awk '/\(disable recaps in \/config\)/ { n=NR } END { print NR-n }')
+        if (( lines_after <= 8 )); then
+            recap_hash=$(echo "$recap" | md5 -q 2>/dev/null || echo "$recap" | md5sum 2>/dev/null | cut -d' ' -f1)
+            if [[ "$recap_hash" != "$old_hash" ]]; then
+                echo "$recap" > "$peek_cache"
+                echo "$recap_hash" > "$peek_hash_file"
+            fi
+            old_hash="$recap_hash"
+            buf_hash="$recap_hash"
+        fi
+    fi
+
     regen=true
     # Dedup: skip if a generation is already running for this session
     if [[ -f "$peek_lock" ]] && kill -0 "$(cat "$peek_lock" 2>/dev/null)" 2>/dev/null; then
