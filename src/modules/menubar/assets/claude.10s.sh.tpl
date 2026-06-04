@@ -565,7 +565,7 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
 
     # Normal click: focus (attached) or attach (detached)
     if (( attached > 0 )); then
-        echo "$line | ansi=true size=13${badge_param}${tt_param} bash=$HELPERS/claude-focus.sh param1=$sess_name terminal=false refresh=true"
+        echo "$line | ansi=true size=13${badge_param}${tt_param} bash=$HELPERS/claude-focus.sh param1=$sess_name param2=$window_id terminal=false refresh=true"
     else
         echo "$line | ansi=true size=13${badge_param}${tt_param} bash=$HELPERS/claude-attach.sh param1=$sess_name terminal=false refresh=true"
     fi
