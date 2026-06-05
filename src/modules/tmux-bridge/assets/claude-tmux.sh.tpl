@@ -57,8 +57,58 @@ CWD="$HOME"
 PROMPT_SET=false
 KEEP_SESSION=false   # --keep-session: leave the tmux session + raw grid alive on exit
 
+usage() {
+  cat <<'CLAUDE_TMUX_HELP'
+claude-tmux — a `claude -p` drop-in that runs an INTERACTIVE Claude session in a
+throwaway tmux window, so headless/background work bills against the interactive
+subscription bucket instead of the metered headless-credit pool. Prompt injection
+and answer parsing are fully deterministic — no model inference of their own.
+
+USAGE
+  claude-tmux -p "<prompt>" [options]
+  echo "<prompt>" | claude-tmux [options]
+
+OPTIONS
+  -p, --print <prompt>     The prompt. If omitted, read from stdin.
+      --model <id>         Model to use (e.g. claude-opus-4-8, claude-sonnet-4-6).
+                           Default: the session's normal model.
+      --output-format <f>  "text" (default) or "json". In json mode the answer is
+                           emitted as {"structured_output": <obj>}, matching
+                           `claude -p --output-format json` so jq callers (auto-dev)
+                           work unchanged.
+      --json-schema <s>    JSON Schema (string). Interactive Claude has no native
+                           schema enforcement, so it is conveyed in the prompt and
+                           validated client-side (type/enum/required); a violating
+                           object is rejected with exit 4.
+      --timeout <secs>     Max seconds to wait for completion. Default: 240.
+      --cwd <dir>          Working directory for the session. Default: $HOME.
+      --keep-session       Diagnostic: do NOT kill the tmux session on return and
+                           keep the captured raw grid; prints the attach/kill
+                           commands and raw-log path to stderr so you can
+                           `tmux attach` and inspect what the TUI rendered.
+  -h, --help               Show this help and exit.
+
+ENV
+  CLAUDE_TMUX_KEEP_RAW=1   Keep only the captured raw grid (session is still killed).
+
+EXIT CODES
+  0  success
+  1  no prompt / answer not locatable between sentinels
+  2  Claude failed to start
+  3  timed out waiting for completion
+  4  JSON requested but no valid object found, or schema validation failed
+
+EXAMPLES
+  claude-tmux -p "What is 17 * 3? Just the number."
+  claude-tmux -p "Summarize this repo" --model claude-sonnet-4-6 --timeout 300
+  SCHEMA='{"type":"object","properties":{"decision":{"type":"string","enum":["ready","blocked"]}},"required":["decision"]}'
+  claude-tmux -p "Is this issue ready?" --output-format json --json-schema "$SCHEMA"
+CLAUDE_TMUX_HELP
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
+    -h|--help)         usage; exit 0 ;;
     -p|--print)        PROMPT="${2-}"; PROMPT_SET=true; shift 2 ;;
     --model)           MODEL="${2-}"; shift 2 ;;
     --output-format)   OUTPUT_FORMAT="${2-}"; shift 2 ;;
