@@ -20,15 +20,27 @@ claude() {
 
   [[ ! -f "$main_settings" ]] && echo "{}" > "$main_settings"
 
+  # Personal/policy flags injected by the consumer's .zshrc via CLAUDE_EXTRA_ARGS
+  # (toolkit stays neutral; policy lives in the consumer config). Word-split so
+  # multiple flags pass through; prepend before "$@" so explicit CLI args win.
+  local extra_args=()
+  if [[ -n "$CLAUDE_EXTRA_ARGS" ]]; then
+    if [[ -n "$ZSH_VERSION" ]]; then
+      extra_args=(${=CLAUDE_EXTRA_ARGS})
+    else
+      extra_args=($CLAUDE_EXTRA_ARGS)
+    fi
+  fi
+
   if [[ -d "$CLAUDE_APIKEY_DIR" && -n "$ANTHROPIC_API_KEY" ]]; then
     # Sync settings + inject apiKeyHelper for API key mode
     {{jq}} --arg key "$ANTHROPIC_API_KEY" \
       '. + {apiKeyHelper: ("echo " + $key)}' \
       "$main_settings" > "$CLAUDE_APIKEY_DIR/settings.json"
-    CLAUDE_CONFIG_DIR="$CLAUDE_APIKEY_DIR" "$CLAUDE_BIN" "$@"
+    CLAUDE_CONFIG_DIR="$CLAUDE_APIKEY_DIR" "$CLAUDE_BIN" "${extra_args[@]}" "$@"
   else
     # Default: OAuth mode via ~/.claude
-    "$CLAUDE_BIN" "$@"
+    "$CLAUDE_BIN" "${extra_args[@]}" "$@"
   fi
 }
 alias c='claude'
