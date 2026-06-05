@@ -97,14 +97,20 @@ osascript -l JavaScript -e "
             for (let wi = 0; wi < wins.length; wi++) {
                 const win = wins[wi];
 
-                // Multi-tab: scan AXTabGroups (at any nesting depth)
+                // Multi-tab: scan AXTabGroups (at any nesting depth). The marker may
+                // live in the tab's title (Ghostty/Terminal) OR its description
+                // (iTerm2 -CC tabs are AXRadioButtons whose title is empty and whose
+                // description carries the tmux window name, e.g. '↣ 13 | FOCUS:main').
                 const groups = [];
                 collectTabGroups(win, 0, groups);
                 for (let gi = 0; gi < groups.length; gi++) {
                     const tabs = groups[gi].uiElements();
                     for (let ti = 0; ti < tabs.length; ti++) {
                         try {
-                            if ((tabs[ti].title() || '').includes(marker)) {
+                            let label = '';
+                            try { label += tabs[ti].title() || ''; } catch(e) {}
+                            try { label += '\n' + (tabs[ti].description() || ''); } catch(e) {}
+                            if (label.includes(marker)) {
                                 proc.frontmost = true;
                                 win.actions.byName('AXRaise').perform();
                                 tabs[ti].actions.byName('AXPress').perform();
