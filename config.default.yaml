@@ -25,6 +25,15 @@ modules:
     maxIssuesPerRun: 3
     # Skip a run if Claude session usage is at or above this %.
     bailoutPct: 75
+    # Route Claude invocations through the tmux-bridge module's `claude-tmux`
+    # instead of `claude -p`. claude-tmux drives an INTERACTIVE Claude TUI in a
+    # throwaway tmux session, so the work bills against the interactive
+    # subscription bucket rather than the separate metered headless-credit pool
+    # (the pools split on 2026-06-15). Requires the tmux-bridge module installed.
+    # Off by default; flip to true to opt in. Note: the rebase workflow keeps
+    # using claude-stable regardless (it runs with --allowedTools / tool loops,
+    # which the single-shot bridge does not drive).
+    useTmuxBridge: false
     # Per-repo autonomy override (default: high).
     #   high - opens issues + PRs + pushes commits autonomously
     #   low  - opens issues + comments only (no PRs, no pushes)

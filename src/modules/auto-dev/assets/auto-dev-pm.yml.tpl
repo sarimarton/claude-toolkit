@@ -343,7 +343,17 @@ jobs:
             "required": ["summary","next","report","actions"]
           }'
 
-          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          # CLAUDE_BIN resolution: prefer the interactive tmux bridge (subscription
+          # bucket) when modules.autoDev.useTmuxBridge is on, else claude-stable,
+          # else the version symlink. See auto-dev-cycle.yml for the rationale.
+          CLAUDE_BIN=""
+          USE_TMUX_BRIDGE=$({{yq}} -r '.modules.autoDev.useTmuxBridge // false' "{{config_file}}" 2>/dev/null | head -n 1)
+          if [ "$USE_TMUX_BRIDGE" = "true" ] && [ -x "$HOME/.config/claude-toolkit/scripts/claude-tmux" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-tmux"
+          fi
+          if [ -z "$CLAUDE_BIN" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          fi
           RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model claude-opus-4-7 --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/pm-prompt.txt")" 2>"$WORK_DIR/pm-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/pm-result.json"
 

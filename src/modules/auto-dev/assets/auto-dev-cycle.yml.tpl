@@ -377,7 +377,23 @@ jobs:
           } > "$WORK_DIR/evaluate-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"decision":{"type":"string","enum":["epic","clarify","ready","blocked"]},"comment":{"type":"string"},"architecture_overview":{"type":"string"},"lhf":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"]}},"questions":{"type":"string"},"summary":{"type":"string"},"approach":{"type":"string"},"reason":{"type":"string"}},"required":["decision"]}'
-          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          # CLAUDE_BIN resolution, in priority order:
+          #  1. claude-tmux — drives an interactive TUI so the run bills against the
+          #     subscription bucket, not the metered headless-credit pool. Opt-in via
+          #     modules.autoDev.useTmuxBridge (default off) so existing setups are
+          #     unaffected until the user flips it on. Drop-in compatible: same -p /
+          #     --model / --output-format json / --json-schema surface, same
+          #     {"structured_output":…} JSON shape.
+          #  2. claude-stable — TCC-stable launcher.
+          #  3. claude — version symlink.
+          CLAUDE_BIN=""
+          USE_TMUX_BRIDGE=$({{yq}} -r '.modules.autoDev.useTmuxBridge // false' "{{config_file}}" 2>/dev/null | head -n 1)
+          if [ "$USE_TMUX_BRIDGE" = "true" ] && [ -x "$HOME/.config/claude-toolkit/scripts/claude-tmux" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-tmux"
+          fi
+          if [ -z "$CLAUDE_BIN" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          fi
           RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/evaluate-prompt.txt")" 2>"$WORK_DIR/evaluate-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/evaluate-result.json"
 
@@ -584,7 +600,23 @@ jobs:
           } > "$WORK_DIR/plan-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"string"}}},"required":["tasks"]}'
-          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          # CLAUDE_BIN resolution, in priority order:
+          #  1. claude-tmux — drives an interactive TUI so the run bills against the
+          #     subscription bucket, not the metered headless-credit pool. Opt-in via
+          #     modules.autoDev.useTmuxBridge (default off) so existing setups are
+          #     unaffected until the user flips it on. Drop-in compatible: same -p /
+          #     --model / --output-format json / --json-schema surface, same
+          #     {"structured_output":…} JSON shape.
+          #  2. claude-stable — TCC-stable launcher.
+          #  3. claude — version symlink.
+          CLAUDE_BIN=""
+          USE_TMUX_BRIDGE=$({{yq}} -r '.modules.autoDev.useTmuxBridge // false' "{{config_file}}" 2>/dev/null | head -n 1)
+          if [ "$USE_TMUX_BRIDGE" = "true" ] && [ -x "$HOME/.config/claude-toolkit/scripts/claude-tmux" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-tmux"
+          fi
+          if [ -z "$CLAUDE_BIN" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          fi
           RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/plan-prompt.txt")" 2>"$WORK_DIR/plan-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/plan-result.json"
 
@@ -722,7 +754,23 @@ jobs:
           } > "$WORK_DIR/implement-prompt.txt"
 
           SCHEMA='{"type":"object","properties":{"status":{"type":"string","enum":["completed","blocked","question"]},"summary":{"type":"string"},"reason":{"type":"string"},"suggestion":{"type":"string"},"text":{"type":"string"},"context":{"type":"string"}},"required":["status"]}'
-          CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          # CLAUDE_BIN resolution, in priority order:
+          #  1. claude-tmux — drives an interactive TUI so the run bills against the
+          #     subscription bucket, not the metered headless-credit pool. Opt-in via
+          #     modules.autoDev.useTmuxBridge (default off) so existing setups are
+          #     unaffected until the user flips it on. Drop-in compatible: same -p /
+          #     --model / --output-format json / --json-schema surface, same
+          #     {"structured_output":…} JSON shape.
+          #  2. claude-stable — TCC-stable launcher.
+          #  3. claude — version symlink.
+          CLAUDE_BIN=""
+          USE_TMUX_BRIDGE=$({{yq}} -r '.modules.autoDev.useTmuxBridge // false' "{{config_file}}" 2>/dev/null | head -n 1)
+          if [ "$USE_TMUX_BRIDGE" = "true" ] && [ -x "$HOME/.config/claude-toolkit/scripts/claude-tmux" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-tmux"
+          fi
+          if [ -z "$CLAUDE_BIN" ]; then
+            CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+          fi
           RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$SCHEMA" -p "$(cat "$WORK_DIR/implement-prompt.txt")" 2>"$WORK_DIR/implement-stderr.txt") || true
           echo "$RESULT" > "$WORK_DIR/implement-result.json"
 

@@ -22,6 +22,7 @@ import { manifest as dualConfig } from '../modules/dual-config/manifest.js';
 import { manifest as vscodeTerminalTopic } from '../modules/vscode-terminal-topic/manifest.js';
 import { manifest as autoDev } from '../modules/auto-dev/manifest.js';
 import { manifest as stableClaudeBin } from '../modules/stable-claude-bin/manifest.js';
+import { manifest as tmuxBridge } from '../modules/tmux-bridge/manifest.js';
 
 /** All module manifests */
 const ALL_MANIFESTS: ModuleManifest[] = [
@@ -39,6 +40,7 @@ const ALL_MANIFESTS: ModuleManifest[] = [
   vscodeTerminalTopic,
   autoDev,
   stableClaudeBin,
+  tmuxBridge,
 ];
 
 /** Get all manifests as a Map keyed by module ID */
