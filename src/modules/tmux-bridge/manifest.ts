@@ -50,7 +50,12 @@ export const manifest: ModuleManifest = {
       executable: false,
     },
   ],
+  // Expose `claude-tmux` on PATH (~/.local/bin is what setup.sh adds), so it can be
+  // used as a `claude -p` drop-in from anywhere. The parser (claude-tmux-parse.py)
+  // is an internal helper called by absolute path, so it is NOT symlinked.
   postInstall:
-    'echo "tmux-bridge installed. Use {{scripts_dir}}/claude-tmux -p \\"<prompt>\\" as a `claude -p` drop-in. ' +
-    'To route auto-dev through it, set its CLAUDE_BIN to {{scripts_dir}}/claude-tmux."',
+    'mkdir -p "$HOME/.local/bin" && ln -sf "{{scripts_dir}}/claude-tmux" "$HOME/.local/bin/claude-tmux" && ' +
+    'echo "tmux-bridge installed. claude-tmux is on PATH — use it as a \\`claude -p\\` drop-in. ' +
+    'To route auto-dev through it, set modules.autoDev.useTmuxBridge: true in config.yaml."',
+  postUninstall: 'rm -f "$HOME/.local/bin/claude-tmux"',
 };
