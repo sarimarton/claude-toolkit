@@ -55,6 +55,7 @@ JSON_SCHEMA=""
 TIMEOUT=240
 CWD="$HOME"
 PROMPT_SET=false
+KEEP_SESSION=false   # --keep-session: leave the tmux session + raw grid alive on exit
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,6 +65,11 @@ while [ $# -gt 0 ]; do
     --json-schema)     JSON_SCHEMA="${2-}"; shift 2 ;;
     --timeout)         TIMEOUT="${2-}"; shift 2 ;;
     --cwd)             CWD="${2-}"; shift 2 ;;
+    # Diagnostic: do NOT kill the tmux session on return, and keep the captured raw
+    # grid. Lets you `tmux attach` to inspect the live TUI state after a run (e.g.
+    # to see exactly what Claude rendered when completion/parsing misbehaved). The
+    # session name + attach command + raw-log path are printed to stderr on exit.
+    --keep-session)    KEEP_SESSION=true; shift ;;
     # Accept-and-ignore flags the caller may pass through from the `claude -p`
     # call site; they are meaningless for an interactive session but must not
     # break the drop-in contract.
@@ -109,6 +115,17 @@ BEGIN_MARK="ZZCLAUDETMUX.BEGIN.${UNIQ_DOT}.ZZ"
 END_MARK="ZZCLAUDETMUX.END.${UNIQ_DOT}.ZZ"
 
 cleanup() {
+  # --keep-session (diagnostic): leave the session running and the raw grid on disk,
+  # and tell the user how to attach. Everything else cleans up as usual.
+  if $KEEP_SESSION; then
+    {
+      echo "claude-tmux: --keep-session — left session alive for inspection."
+      echo "  attach:  $TMUX_BIN attach -t $SESSION"
+      echo "  kill:    $TMUX_BIN kill-session -t $SESSION"
+      echo "  raw log: $RAW_LOG"
+    } >&2
+    return
+  fi
   $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null || true
   # CLAUDE_TMUX_KEEP_RAW=1 preserves the captured grid for diagnosis (default: clean up).
   [ -n "${CLAUDE_TMUX_KEEP_RAW:-}" ] || rm -f "$RAW_LOG" 2>/dev/null || true
