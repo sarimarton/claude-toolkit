@@ -104,10 +104,42 @@ export interface ModuleManifest {
   assets: AssetDefinition[];
   /** Slash commands to install */
   commands?: AssetDefinition[];
+  /**
+   * tmux config additions. The toolkit does NOT edit the user's hand-written,
+   * version-controlled ~/.config/tmux/tmux.conf. Instead it writes a generated,
+   * machine-specific drop-in file (~/.config/tmux/tmux.conf.d/claude-toolkit-<id>.conf)
+   * that the main config sources at the end via a single stable glob line:
+   *   source-file -q ~/.config/tmux/tmux.conf.d/*.conf
+   * The user adds that one line once (version-controlled, path-relative). Because
+   * tmux uses last-write-wins for `set`, drop-in lines can OVERRIDE earlier
+   * settings — so even "edits" to existing directives are expressed as plain
+   * append lines, no in-place rewriting. Install = write the drop-in; uninstall =
+   * delete it. Only applied if the main tmux.conf exists (augment, don't create).
+   */
+  tmuxConf?: TmuxConfigPatch;
   /** Command template to run after install (e.g. for custom build steps) */
   postInstall?: string;
   /** Command template to run after uninstall (e.g. for cleanup) */
   postUninstall?: string;
+}
+
+/**
+ * The tmux config lines a module contributes, written verbatim into its drop-in
+ * file (after template-var resolution: {{tmux}}, {{scripts_dir}}, …).
+ *
+ * `lines` are new directives (e.g. a `set-hook -ga client-attached …`).
+ * `overrides` are directives that supersede a setting from the main tmux.conf
+ * (e.g. re-`set`ting @resurrect-processes without "~claude"). They are written
+ * the same way — the only distinction is intent/ordering: overrides go LAST in
+ * the drop-in so they win. Kept as a separate field so the generated file can
+ * group + comment them, making it obvious which lines deliberately shadow the
+ * user's config.
+ */
+export interface TmuxConfigPatch {
+  /** New directives the module adds (template vars allowed). */
+  lines: string[];
+  /** Directives that override a main-config setting via last-write-wins. */
+  overrides?: string[];
 }
 
 /** Resolved paths from config + auto-detection */

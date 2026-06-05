@@ -4,6 +4,7 @@ import { resolveConfig, ensureInstallDirs, getTargetDir } from '../core/config.j
 import { getAllManifests, getInstalledModuleIds, getModuleStatus } from '../core/module-registry.js';
 import { resolveInstall, resolveUninstall } from '../core/dependency-resolver.js';
 import { registerHooks, unregisterHooks, recordAssetHashes, removeAssetHashes } from '../core/settings-manager.js';
+import { applyTmuxConfig, removeTmuxConfig } from '../core/tmux-config-manager.js';
 import { buildVarMap, renderTemplate, installTemplate, renderTemplateFile, contentHash } from '../core/template-engine.js';
 import type { ModuleManifest, ResolvedConfig } from '../core/types.js';
 import { execSync } from 'node:child_process';
@@ -70,6 +71,15 @@ function doInstall(manifest: ModuleManifest, config: ResolvedConfig, modulesDir:
     registerHooks(config, manifest.id, resolvedHooks);
   }
 
+  // Write tmux drop-in (resolve template vars), the tmux analogue of hook registration
+  if (manifest.tmuxConf) {
+    const tc = manifest.tmuxConf;
+    applyTmuxConfig(config, manifest.id, {
+      lines: tc.lines.map(l => renderTemplate(l, vars)),
+      overrides: tc.overrides?.map(o => renderTemplate(o, vars)),
+    });
+  }
+
   // Run post-install command
   if (manifest.postInstall) {
     const cmd = renderTemplate(manifest.postInstall, vars);
@@ -97,6 +107,11 @@ function doUninstall(manifest: ModuleManifest, config: ResolvedConfig): void {
   // Remove asset hashes and unregister hooks
   removeAssetHashes(config, manifest.id);
   unregisterHooks(config, manifest.id);
+
+  // Remove tmux.conf marker block + restore any in-place edits
+  if (manifest.tmuxConf) {
+    removeTmuxConfig(config, manifest.id);
+  }
 
   // Run post-uninstall command
   if (manifest.postUninstall) {

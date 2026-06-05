@@ -2,7 +2,13 @@
 # claude-resume.sh — Resume a dead (rebooted/crashed) Claude session in its restored
 # tmux pane, then attach a terminal tab to it. Triggered by the menu's hollow orange ○.
 # The pane and UUID are resolved by the menu at render time from the resume index.
-# Usage: claude-resume.sh <session_name> <pane_id> <uuid>
+# Usage: claude-resume.sh [--no-attach] <session_name> <pane_id> <uuid>
+#
+# --no-attach: skip the final claude-attach.sh (terminal-tab) step. Used by the
+# auto-resume-on-attach path (claude-auto-resume.sh, fired from tmux's
+# client-attached hook): the tab is already open and focused there, so opening
+# another would fight the client that just attached. The menu's manual ○ path
+# omits the flag — it needs the attach to bring the user into the resumed pane.
 
 notify_failure() {
     local title="$1"
@@ -10,6 +16,12 @@ notify_failure() {
     logger -t claude-toolkit "FAIL: $title — $detail" 2>/dev/null || true
     osascript -e "display notification \"$detail\" with title \"$title\"" >/dev/null 2>&1 || true
 }
+
+NO_ATTACH=false
+if [[ "$1" == "--no-attach" ]]; then
+    NO_ATTACH=true
+    shift
+fi
 
 SESSION="$1"
 PANE="$2"
@@ -23,11 +35,13 @@ TMUX_BIN={{tmux}}
 CLAUDE_BIN={{claude}}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# If Claude already came back in this pane (e.g. a double-click), skip the relaunch
-# and just bring its terminal tab forward.
+# If Claude already came back in this pane (e.g. a double-click, or auto-resume
+# already fired for it), skip the relaunch. With --no-attach this is a pure no-op
+# (idempotent — the auto-resume path may revisit a pane it already resumed); the
+# menu path still brings the existing tab forward.
 cur=$(TMUX= $TMUX_BIN display-message -t "$PANE" -p '#{pane_current_command}' 2>/dev/null)
 if [[ "$cur" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    "$SCRIPT_DIR/claude-attach.sh" "$SESSION"
+    $NO_ATTACH || "$SCRIPT_DIR/claude-attach.sh" "$SESSION"
     exit 0
 fi
 
@@ -47,4 +61,5 @@ if ! TMUX= $TMUX_BIN send-keys -t "$PANE" "$CLAUDE_BIN --resume $UUID" Enter 2>/
 fi
 
 # Open/attach a terminal tab so the user lands in the resumed session.
-"$SCRIPT_DIR/claude-attach.sh" "$SESSION"
+# Skipped under --no-attach (auto-resume: the attaching client is already there).
+$NO_ATTACH || "$SCRIPT_DIR/claude-attach.sh" "$SESSION"
