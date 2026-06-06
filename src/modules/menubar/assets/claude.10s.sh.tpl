@@ -18,6 +18,13 @@
 
 export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
+# ── Menu-bar text style ──────────────────────────────────
+# The condensed font for the menu-bar title line. Change it in ONE place here.
+# MENUBAR_STYLE is the full SwiftBar param suffix for the standard size-12 title;
+# the boot placeholder uses MENUBAR_FONT with its own smaller size.
+MENUBAR_FONT="RobotoCondensed-Regular"
+MENUBAR_STYLE="ansi=true size=10 font=$MENUBAR_FONT"
+
 # ── Cache-first rendering — the display path NEVER does slow work ──
 # SwiftBar runs this script in two situations: every 10s (background tick) and on
 # every dropdown open (refreshOnOpen, blocking). The full render below is heavy,
@@ -60,7 +67,7 @@ if [[ "$CLAUDE_MENU_RENDER" != "1" ]]; then
     # icon appears instantly, and build the real menu in the background. The next
     # tick (≤10s) serves the real cache. Emitting non-empty output here is essential
     # — SwiftBar removes the menu-bar item entirely on empty stdout.
-    printf '\033[38;5;214m✻ \033[38;5;243m…\033[0m | ansi=true size=12\n'
+    printf '\033[38;5;214m✻ \033[38;5;243m…\033[0m | ansi=true size=10 font=%s\n' "$MENUBAR_FONT"
     _spawn_bg_render
     exit 0
 fi
@@ -294,15 +301,15 @@ if [[ -n "$pct" ]]; then
     $weekly_capped && title="$title${A_YELLOW}W"
     [[ -n "$mins_left" ]] && title="$title ${A_DIM}($(format_time $mins_left))"
     $MULTI_ACCOUNT && title="$title ${A_DIM}$PRIMARY_ACCOUNT"
-    echo "${title}${A_RST} | ansi=true size=12"
+    echo "${title}${A_RST} | $MENUBAR_STYLE"
 elif [[ "$error" == "usage_unavailable" ]]; then
-    echo "${A_LOGO}✻ ${A_YELLOW}⚠${A_RST} | ansi=true size=12"
+    echo "${A_LOGO}✻ ${A_YELLOW}⚠${A_RST} | $MENUBAR_STYLE"
 elif [[ -n "$phase" && -z "$error" ]]; then
     # Refreshing… spinner — but check that the phase isn't stuck
     age_phase=$(( now_check - ${ts:-0} ))
     if [[ -n "$ts" ]] && (( age_phase > STALE_THRESHOLD )); then
         # Phase has not progressed for >5min — poll is likely stuck or crashed
-        echo "${A_LOGO}✻ ${A_DIM}stuck ${A_YELLOW}⚠${A_RST} | ansi=true size=12"
+        echo "${A_LOGO}✻ ${A_DIM}stuck ${A_YELLOW}⚠${A_RST} | $MENUBAR_STYLE"
     else
         label="$phase"
         case "$phase" in
@@ -311,10 +318,10 @@ elif [[ -n "$phase" && -z "$error" ]]; then
             send)    label="Sending /usage"   ;; wait) label="Waiting" ;;
             parse)   label="Parsing" ;;
         esac
-        echo "${A_LOGO}✻ ${A_DIM}${label}…${A_RST} | ansi=true size=12"
+        echo "${A_LOGO}✻ ${A_DIM}${label}…${A_RST} | $MENUBAR_STYLE"
     fi
 else
-    echo "${A_LOGO}✻ ${A_DIM}--${A_RST} | ansi=true size=12"
+    echo "${A_LOGO}✻ ${A_DIM}--${A_RST} | $MENUBAR_STYLE"
 fi
 
 echo "---"
