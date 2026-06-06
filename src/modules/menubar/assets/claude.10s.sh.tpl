@@ -22,7 +22,7 @@ export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bi
 # The condensed font for the menu-bar title line. Change it in ONE place here.
 # MENUBAR_STYLE is the full SwiftBar param suffix for the standard size-12 title;
 # the boot placeholder uses MENUBAR_FONT with its own smaller size.
-MENUBAR_FONT="RobotoCondensed-Regular"
+MENUBAR_FONT="BarlowSemiCondensed-Regular"
 MENUBAR_STYLE="ansi=true size=10 font=$MENUBAR_FONT"
 
 # ── Cache-first rendering — the display path NEVER does slow work ──
