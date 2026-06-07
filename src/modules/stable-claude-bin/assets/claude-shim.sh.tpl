@@ -32,9 +32,11 @@ set -euo pipefail
 
 STABLE_LAUNCHER="{{scripts_dir}}/claude-stable"
 
-# Prefer the stable launcher; fall back to the version symlink so a missing or
-# not-yet-installed launcher never blocks a launch (correctness over TCC).
+# Prefer the stable launcher; fall back to the real install symlink so a missing
+# or not-yet-installed launcher never blocks a launch (correctness over TCC).
+# The fallback MUST be the install path, never a PATH-resolved `claude` — this
+# script IS the PATH `claude`, so `exec claude` would re-exec itself forever.
 if [[ -x "$STABLE_LAUNCHER" ]]; then
   exec "$STABLE_LAUNCHER" "$@"
 fi
-exec "{{claude}}" "$@"
+exec "{{home}}/.local/bin/claude" "$@"

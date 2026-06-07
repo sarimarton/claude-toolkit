@@ -22,7 +22,14 @@
 #   the fixed-path Mach-O, not this script.
 set -euo pipefail
 
-REAL_LINK="{{claude}}"                    # version symlink: ~/.local/bin/claude
+# The Claude install symlink — Claude's own ~/.local/bin/claude → versions/<X>.
+# MUST be the real install path, NOT a PATH-resolved `claude`: the claude-shim
+# this module also installs lives on PATH ahead of ~/.local/bin, so a `which
+# claude` (what {{claude}} resolves to) would point REAL_LINK back at the shim →
+# shim execs launcher → launcher reads shim as the "real" binary → it copies the
+# 2KB shim over the stable path and exec-loops. Hardcoding the install symlink
+# breaks that cycle; the launcher's job is by definition to mirror this symlink.
+REAL_LINK="{{home}}/.local/bin/claude"    # version symlink: ~/.local/bin/claude
 STABLE="{{home}}/.local/libexec/claude"   # FIXED path — grant THIS in Full Disk Access
 VERFILE="$STABLE.ver"
 

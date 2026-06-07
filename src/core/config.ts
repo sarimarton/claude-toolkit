@@ -30,6 +30,17 @@ function which(binary: string, fallback: string): string {
   }
 }
 
+/** Resolve the real Claude binary, never the toolkit's own claude shim.
+ *  The stable-claude-bin module installs a `claude` shim in binDir and the user
+ *  prepends binDir to PATH, so a bare `which claude` would return the shim —
+ *  which then routes back through the launcher whose REAL_LINK is this value,
+ *  forming an exec loop. Skip any PATH hit inside binDir and fall back to the
+ *  install symlink so config.claude always points at the genuine binary. */
+function whichClaude(binDir: string, fallback: string): string {
+  const hit = which('claude', fallback);
+  return hit.startsWith(binDir + path.sep) ? fallback : hit;
+}
+
 /** First existing Homebrew bin path for a tool, across the standard prefixes and
  *  a user-space prefix (~/homebrew on a sudo-less/MDM machine). Used as which()'s
  *  fallback when PATH lookup fails. */
@@ -86,7 +97,7 @@ export function resolveConfig(): ResolvedConfig {
     tmux: p.tmux || which('tmux', brewFallback('tmux')),
     jq: p.jq || which('jq', brewFallback('jq')),
     yq: p.yq || which('yq', brewFallback('yq')),
-    claude: p.claude || which('claude', path.join(HOME, '.local/bin/claude')),
+    claude: p.claude || whichClaude(binDir, path.join(HOME, '.local/bin/claude')),
     hs: p.hs || '/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs',
     home: HOME,
     installDir,
