@@ -48,7 +48,7 @@ export interface HookRegistration {
 }
 
 /** Asset target location */
-export type AssetTarget = 'hooks' | 'scripts' | 'commands' | 'swiftbar' | 'launchagents';
+export type AssetTarget = 'hooks' | 'scripts' | 'commands' | 'swiftbar' | 'launchagents' | 'bin';
 
 /** Asset to install */
 export interface AssetDefinition {
@@ -164,6 +164,8 @@ export interface ResolvedConfig {
   hooksDir: string;
   /** Scripts directory */
   scriptsDir: string;
+  /** Bin directory (~/.config/claude-toolkit/bin) — meant to be prepended to PATH */
+  binDir: string;
   /** Commands directory */
   commandsDir: string;
   /** SwiftBar deploy directory (~/.config/claude-toolkit/swiftbar — where assets land) */

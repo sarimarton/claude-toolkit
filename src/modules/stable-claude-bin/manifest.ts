@@ -16,7 +16,16 @@ export const manifest: ModuleManifest = {
     'Developer ID signature, TCC re-validates new versions against the same stored requirement and stays ' +
     'silent. Grant Full Disk Access to the fixed path ONCE (run claude-stable-setup.sh), never re-prompt.\n\n' +
     'Consumers: the dual-config claude() function and the auto-dev workflow route through claude-stable, ' +
-    'falling back to the version symlink if this module is not installed.',
+    'falling back to the version symlink if this module is not installed.\n\n' +
+    'IMPORTANT — the launcher only fixes TCC for invocations that actually go through it. A bare `claude` ' +
+    'in a shell that has not sourced claude-fn.sh, or any non-interactive context, resolves straight to ' +
+    '~/.local/bin/claude → versions/<X> and re-prompts on every update. The background daemon makes this ' +
+    'worse: it is a per-user singleton with first-spawner-wins semantics, so ONE direct ~/.local/bin/claude ' +
+    'launch pins the daemon to a versions/<X> path for the whole session, and later launcher-routed sessions ' +
+    'attach to that same un-granted daemon. To close this, the module also installs a `claude` PATH shim ' +
+    '(claude-shim.sh) in ~/.config/claude-toolkit/bin; prepend that dir ahead of ~/.local/bin on PATH so ' +
+    'EVERY claude launch routes through the launcher. The shim is safe across Claude self-updates, which only ' +
+    'rewrite the absolute ~/.local/bin/claude symlink and never a PATH-resolved `claude`.',
   platform: 'darwin',
   dependencies: [],
   externals: [
@@ -48,9 +57,21 @@ export const manifest: ModuleManifest = {
       filename: 'claude-stable-setup.sh',
       executable: true,
     },
+    {
+      // PATH shim named `claude` in a dir prepended ahead of ~/.local/bin, so
+      // even bare `claude` / `zsh -ic claude` / direct manual launches route
+      // through the stable launcher (not just the dual-config claude() function).
+      source: 'claude-shim.sh.tpl',
+      target: 'bin',
+      filename: 'claude',
+      executable: true,
+    },
   ],
   postInstall:
     '{{scripts_dir}}/claude-stable --version >/dev/null 2>&1 || true; ' +
     'echo "stable-claude-bin installed. Run {{scripts_dir}}/claude-stable-setup.sh once, ' +
-    'then add ~/.local/libexec/claude to Full Disk Access."',
+    'then add ~/.local/libexec/claude to Full Disk Access. ' +
+    'To route ALL claude launches (bare/manual/non-interactive) through it, ' +
+    'prepend the shim dir to PATH in your shell rc: ' +
+    'export PATH=\\"{{bin_dir}}:\\$PATH\\""',
 };

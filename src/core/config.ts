@@ -62,6 +62,7 @@ export function resolveConfig(): ResolvedConfig {
   const installDir = user.installDir || CONFIG_DIR;
   const hooksDir = path.join(installDir, 'hooks');
   const scriptsDir = path.join(installDir, 'scripts');
+  const binDir = path.join(installDir, 'bin');
   const commandsDir = path.join(installDir, 'commands');
   const helpersDir = path.join(installDir, 'helpers');
   const swiftbarDir = path.join(installDir, 'swiftbar');
@@ -92,6 +93,7 @@ export function resolveConfig(): ResolvedConfig {
     repoDir: REPO_DIR,
     hooksDir,
     scriptsDir,
+    binDir,
     commandsDir,
     swiftbarDir,
     swiftbarPluginDir,
@@ -110,7 +112,7 @@ export function resolveConfig(): ResolvedConfig {
 
 /** Ensure all install directories exist */
 export function ensureInstallDirs(config: ResolvedConfig): void {
-  for (const dir of [config.hooksDir, config.scriptsDir, config.commandsDir, config.swiftbarDir, config.helpersDir, config.launchAgentsDir]) {
+  for (const dir of [config.hooksDir, config.scriptsDir, config.binDir, config.commandsDir, config.swiftbarDir, config.helpersDir, config.launchAgentsDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -120,6 +122,7 @@ export function getTargetDir(config: ResolvedConfig, target: string): string {
   switch (target) {
     case 'hooks': return config.hooksDir;
     case 'scripts': return config.scriptsDir;
+    case 'bin': return config.binDir;
     case 'commands': return config.commandsDir;
     case 'swiftbar': return config.swiftbarDir;
     case 'launchagents': return config.launchAgentsDir;
