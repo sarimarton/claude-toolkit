@@ -439,8 +439,13 @@ if [[ -f "$PEEK_GLOBAL_LOCK" ]] && kill -0 "$(cat "$PEEK_GLOBAL_LOCK" 2>/dev/nul
 fi
 
 while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id window_id; do
-    # Filter: only Claude processes (version pattern like 1.2.3), exclude monitor
-    [[ ! "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && continue
+    # Filter: only live Claude panes, exclude monitor.
+    # pane_current_command is a version string (1.2.3) for a directly-launched Claude,
+    # but the bare word "claude" once the stable-claude-bin PATH shim execs the launcher
+    # (the process image is then literally named claude). Treat BOTH as alive — otherwise
+    # live (even attached) sessions fall through to the dead/restorable loop and render as
+    # a gray ○, and the cleanup ✕ would kill-pane a live pane.
+    [[ ! "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$proc" != "claude" ]] && continue
     [[ "$sess_name" == "claude_usage_mon" ]] && continue
 
     # Dedup by window_id (bash 3.2 compatible)
@@ -599,7 +604,7 @@ RESUME_INDEX="{{state_dir}}/resume-index.tsv"
 PROJ_ROOT="$HOME_DIR/.claude/projects"
 if [[ -f "$RESUME_INDEX" ]]; then
     while IFS=$'\t' read -r sess_name attached win_name proc path pane_id window_id; do
-        [[ "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && continue   # alive → already listed above
+        [[ "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$proc" == "claude" ]] && continue   # alive (version or PATH-shim 'claude') → already listed above
         [[ "$sess_name" == "claude_usage_mon" ]] && continue
         case "$win_name" in "✻ "*) ;; *) continue ;; esac        # only topic windows
         case "$seen_windows" in *"|$window_id|"*) continue ;; esac
@@ -626,7 +631,12 @@ if [[ -f "$RESUME_INDEX" ]]; then
         # (session, window-name) and close the resurrected shell pane, so the dead
         # topic disappears from the menu entirely.
         cleanup_line="${A_DIM}○ ${line_body} ${A_RED}✕${A_RST}"
-        echo "$cleanup_line | ansi=true size=13 alternate=true tooltip=Remove bash=$HELPERS/claude-resume-cleanup.sh param1=$sess_name param2=$win_name param3=$pane_id terminal=false refresh=true"
+        # Quote param2 — win_name is the ONLY param value that contains spaces (✻ <topic>).
+        # SwiftBar word-splits unquoted param values, which truncated win_name to "✻" and
+        # shifted the rest, so the cleanup awk matched zero index rows (silent no-op) and
+        # the pane-kill targeted the wrong pane. Double-quoting preserves the full value
+        # (same convention as the "Stop all monitors" item below).
+        echo "$cleanup_line | ansi=true size=13 alternate=true tooltip=Remove bash=$HELPERS/claude-resume-cleanup.sh param1=\"$sess_name\" param2=\"$win_name\" param3=\"$pane_id\" terminal=false refresh=true"
     done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_id}	#{window_id}" 2>/dev/null)
 fi
 

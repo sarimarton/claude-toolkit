@@ -40,7 +40,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # (idempotent — the auto-resume path may revisit a pane it already resumed); the
 # menu path still brings the existing tab forward.
 cur=$(TMUX= $TMUX_BIN display-message -t "$PANE" -p '#{pane_current_command}' 2>/dev/null)
-if [[ "$cur" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+# Claude is alive if the pane command is a version string (direct launch) or the bare
+# word "claude" (stable-claude-bin PATH shim execs the launcher under that name).
+if [[ "$cur" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$cur" == "claude" ]]; then
     $NO_ATTACH || "$SCRIPT_DIR/claude-attach.sh" "$SESSION"
     exit 0
 fi

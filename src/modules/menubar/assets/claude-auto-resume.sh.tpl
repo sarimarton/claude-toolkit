@@ -32,7 +32,7 @@ PROJ_ROOT="$HOME/.claude/projects"
 # .jsonl still exists on disk — skipping windows with no recoverable session.
 seen_windows=""
 while IFS=$'\t' read -r win_name proc pane_id window_id; do
-    [[ "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && continue   # Claude already alive here
+    [[ "$proc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$proc" == "claude" ]] && continue   # Claude already alive (version or PATH-shim 'claude')
     case "$win_name" in "✻ "*) ;; *) continue ;; esac        # only topic windows
     case "$seen_windows" in *"|$window_id|"*) continue ;; esac
     seen_windows="${seen_windows}|${window_id}|"

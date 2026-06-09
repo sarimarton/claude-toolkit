@@ -32,10 +32,13 @@ if [[ -f "$RESUME_INDEX" ]]; then
 fi
 
 # Close the resurrected shell pane. Guard: only if it still runs a plain shell —
-# never kill a pane where Claude (a version-like command) has since come back.
+# never kill a pane where Claude has since come back. Claude shows as a version string
+# (1.2.3) when launched directly, or the bare word "claude" once the stable-claude-bin
+# PATH shim execs the launcher — guard against BOTH so a live (often attached) session
+# is never killed by the cleanup.
 if [[ -n "$PANE" ]]; then
     cur=$(TMUX= $TMUX_BIN display-message -t "$PANE" -p '#{pane_current_command}' 2>/dev/null)
-    if [[ -n "$cur" && ! "$cur" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if [[ -n "$cur" && ! "$cur" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$cur" != "claude" ]]; then
         TMUX= $TMUX_BIN kill-pane -t "$PANE" 2>/dev/null || true
     fi
 fi
