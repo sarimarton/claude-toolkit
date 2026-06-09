@@ -585,7 +585,9 @@ while IFS=$'\t' read -r sess_name attached win_name proc path pane_title pane_id
     # Alternate (Option held): ✕ replaces bullet (kill + reopen menu)
     echo "${alt_line} | ansi=true size=13 alternate=true bash=$HELPERS/claude-kill.sh param1=$sess_name terminal=false refresh=true"
 
-done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_title}	#{pane_id}	#{window_id}" 2>/dev/null)
+# Sort by pane_current_path (field 5) so same-cwd sessions render adjacently —
+# keeps the [path] prefix from alternating and the topic column from jittering.
+done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_title}	#{pane_id}	#{window_id}" 2>/dev/null | sort -t$'\t' -k5,5)
 
 # ── Dead (restorable) sessions — rebooted/crashed panes ──
 # tmux-resurrect brings the "✻ topic" windows back after a reboot, but Claude is
@@ -637,7 +639,7 @@ if [[ -f "$RESUME_INDEX" ]]; then
         # the pane-kill targeted the wrong pane. Double-quoting preserves the full value
         # (same convention as the "Stop all monitors" item below).
         echo "$cleanup_line | ansi=true size=13 alternate=true tooltip=Remove bash=$HELPERS/claude-resume-cleanup.sh param1=\"$sess_name\" param2=\"$win_name\" param3=\"$pane_id\" terminal=false refresh=true"
-    done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_id}	#{window_id}" 2>/dev/null)
+    done < <(TMUX= $TMUX_BIN list-panes -a -F "#{session_name}	#{session_attached}	#{window_name}	#{pane_current_command}	#{pane_current_path}	#{pane_id}	#{window_id}" 2>/dev/null | sort -t$'\t' -k5,5)
 fi
 
 if ! $has_sessions; then
