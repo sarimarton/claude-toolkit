@@ -670,6 +670,7 @@ fi
 
 echo "---"
 echo "Tools"
+echo "-- Refresh now | bash=$POLL_SCRIPT terminal=false refresh=true sfimage=arrow.clockwise shortcut=CMD+OPT+R"
 echo "-- Usage chart | bash=$HELPERS/usage-chart.sh terminal=false sfimage=chart.bar.xaxis"
 echo "-- Edit config… | bash=$HELPERS/edit-config.sh terminal=false refresh=false sfimage=gearshape"
 if [[ -f "$HELPERS/auto-dev-install.sh" ]]; then
