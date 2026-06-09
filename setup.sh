@@ -8,6 +8,19 @@ set -e
 
 CONFIG_DIR="$HOME/.config/claude-toolkit"
 BIN_DIR="$HOME/.local/bin"
+CANONICAL_DEPLOY_DIR="$HOME/.local/share/claude-toolkit"
+
+# Detect --yes/-y so the deploy-target guard can be skipped non-interactively.
+ASSUME_YES=false
+for _arg in "$@"; do
+  case "$_arg" in
+    --yes|-y) ASSUME_YES=true ;;
+  esac
+done
+
+# Decision logic for the deploy-target guard lives in setup-guard.sh (unit-tested).
+GUARD_LIB="$(cd "$(dirname "$0")" && pwd)/setup-guard.sh"
+[ -f "$GUARD_LIB" ] && . "$GUARD_LIB"
 
 echo "Claude Toolkit — Setup"
 echo "======================"
@@ -41,7 +54,32 @@ echo "✓ Prerequisites OK (node v$(node -v | tr -d v), git, jq)"
 # Detect if we're running from inside a cloned repo
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/package.json" ] && grep -q '"claude-toolkit"' "$SCRIPT_DIR/package.json" 2>/dev/null; then
-  # Running locally (./setup.sh from the repo)
+  # Running locally (./setup.sh from the repo). Guard against the "dev clone
+  # becomes deploy target" trap: if SCRIPT_DIR isn't the canonical deploy dir and
+  # the user hasn't opted in (CLAUDE_TOOLKIT_DIR / --yes), confirm first —
+  # otherwise `claude-toolkit update` would git-reset --hard this working tree.
+  if command -v needs_deploy_target_confirmation >/dev/null 2>&1 \
+     && needs_deploy_target_confirmation "$SCRIPT_DIR" "$CANONICAL_DEPLOY_DIR" "${CLAUDE_TOOLKIT_DIR:-}" "$ASSUME_YES"; then
+    echo "⚠  About to use '$SCRIPT_DIR' as the deploy target (install dir)."
+    echo "   This looks like a development clone, not the canonical deploy location"
+    echo "   ($CANONICAL_DEPLOY_DIR). Installing here wires this working tree as the"
+    echo "   deploy target, so 'claude-toolkit update' will 'git reset --hard' it."
+    echo ""
+    echo "   To deploy separately instead, re-run from outside the repo (curl | sh)"
+    echo "   or set CLAUDE_TOOLKIT_DIR=$CANONICAL_DEPLOY_DIR explicitly."
+    echo ""
+    if [ -t 0 ]; then
+      printf "   Continue using this dir as the deploy target? [y/N] "
+      read -r _reply </dev/tty
+      case "$_reply" in
+        [yY]|[yY][eE][sS]) ;;
+        *) echo "Aborted."; exit 1 ;;
+      esac
+    else
+      echo "   Non-interactive (no TTY); aborting. Pass --yes to override."
+      exit 1
+    fi
+  fi
   INSTALL_DIR="${CLAUDE_TOOLKIT_DIR:-$SCRIPT_DIR}"
   echo "Using local repo: $INSTALL_DIR"
   cd "$INSTALL_DIR"
