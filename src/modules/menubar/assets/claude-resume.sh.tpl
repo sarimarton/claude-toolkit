@@ -51,6 +51,12 @@ if ! TMUX= $TMUX_BIN display-message -t "$PANE" -p '' >/dev/null 2>&1; then
     exit 1
 fi
 
+# Mark this pane as auto-resuming so .zshrc's precmd mutes the prompt-ready Pop for
+# the single redraw the resumed Claude triggers (a -CC client reconnect fires this
+# with no human at the keyboard — the phantom Pop). precmd consumes the marker, so
+# the next real prompt sounds normally. Per-pane tmux option = dies with the pane.
+TMUX= $TMUX_BIN set-option -p -t "$PANE" @ct_resuming 1 2>/dev/null
+
 # Clear any stray input on the prompt, then launch the resume in the pane itself.
 # Running it inside the pane (not a detached process) keeps the session bound to its
 # tmux window, exactly where it was before the reboot.
