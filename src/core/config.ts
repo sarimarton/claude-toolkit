@@ -38,7 +38,13 @@ function which(binary: string, fallback: string): string {
  *  install symlink so config.claude always points at the genuine binary. */
 function whichClaude(binDir: string, fallback: string): string {
   const hit = which('claude', fallback);
-  return hit.startsWith(binDir + path.sep) ? fallback : hit;
+  // Normalize both paths before the prefix check so alternate spellings of the
+  // same location (trailing slash, //, /./, ..) can't slip the shim past the
+  // guard. path.resolve collapses those; realpath would also follow symlinks but
+  // the shim is a regular file, so resolve is enough and never throws on ENOENT.
+  const normHit = path.resolve(hit);
+  const normBin = path.resolve(binDir);
+  return normHit === normBin || normHit.startsWith(normBin + path.sep) ? fallback : hit;
 }
 
 /** First existing Homebrew bin path for a tool, across the standard prefixes and
