@@ -1,0 +1,14 @@
+{
+  "name": "llm-cleanup-server",
+  "version": "1.0.0",
+  "description": "Stateless localhost cleanup API over the Claude subscription (dictation post-processing)",
+  "type": "module",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}

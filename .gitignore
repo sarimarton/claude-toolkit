@@ -1,3 +1,7 @@
 /node_modules
 /dist
 __pycache__/
+
+# Vendored cleanup-server deps are installed by postInstall (npm install), not committed
+src/modules/llm-cleanup-server/assets/server/node_modules/
+src/modules/llm-cleanup-server/assets/server/package-lock.json

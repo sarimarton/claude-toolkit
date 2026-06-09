@@ -23,6 +23,8 @@ import { manifest as vscodeTerminalTopic } from '../modules/vscode-terminal-topi
 import { manifest as autoDev } from '../modules/auto-dev/manifest.js';
 import { manifest as stableClaudeBin } from '../modules/stable-claude-bin/manifest.js';
 import { manifest as tmuxBridge } from '../modules/tmux-bridge/manifest.js';
+import { manifest as llmCleanupServer } from '../modules/llm-cleanup-server/manifest.js';
+import { manifest as dictationPipeline } from '../modules/dictation-pipeline/manifest.js';
 
 /** All module manifests */
 const ALL_MANIFESTS: ModuleManifest[] = [
@@ -41,6 +43,8 @@ const ALL_MANIFESTS: ModuleManifest[] = [
   autoDev,
   stableClaudeBin,
   tmuxBridge,
+  llmCleanupServer,
+  dictationPipeline,
 ];
 
 /** Get all manifests as a Map keyed by module ID */
