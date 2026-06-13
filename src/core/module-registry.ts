@@ -25,6 +25,7 @@ import { manifest as stableClaudeBin } from '../modules/stable-claude-bin/manife
 import { manifest as tmuxBridge } from '../modules/tmux-bridge/manifest.js';
 import { manifest as llmCleanupServer } from '../modules/llm-cleanup-server/manifest.js';
 import { manifest as dictationPipeline } from '../modules/dictation-pipeline/manifest.js';
+import { manifest as ultraresume } from '../modules/ultraresume/manifest.js';
 
 /** All module manifests */
 const ALL_MANIFESTS: ModuleManifest[] = [
@@ -45,6 +46,7 @@ const ALL_MANIFESTS: ModuleManifest[] = [
   tmuxBridge,
   llmCleanupServer,
   dictationPipeline,
+  ultraresume,
 ];
 
 /** Get all manifests as a Map keyed by module ID */
