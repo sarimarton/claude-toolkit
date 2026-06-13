@@ -15,6 +15,7 @@
 # <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 # <swiftbar.hideSwiftBar>true</swiftbar.hideSwiftBar>
 # <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
+# <swiftbar.alwaysVisible>true</swiftbar.alwaysVisible>
 
 export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -38,9 +39,51 @@ MENUBAR_STYLE="ansi=true size=12 font=$MENUBAR_FONT"
 # refresh off in a detached background process. SwiftBar therefore always gets
 # instant output and never rebuilds the open menu mid-interaction. The heavy render
 # runs under CLAUDE_MENU_RENDER=1 and writes only to the cache, never to SwiftBar.
-_MENU_CACHE="/tmp/claude-menu-raw.txt"
+_MENU_CACHE="${CLAUDE_MENU_CACHE:-/tmp/claude-menu-raw.txt}"
 _MENU_CACHE_TTL=9
-_RENDER_LOCK="/tmp/claude-menu-render.lock"
+_RENDER_LOCK="${CLAUDE_MENU_RENDER_LOCK:-/tmp/claude-menu-render.lock}"
+
+# ── Failure forensics ────────────────────────────────────
+# When the icon vanished (2026-06-13 RCA) there was zero trace of what the last
+# plugin run did. SwiftBar hides the status item on EMPTY stdout (and AppKit then
+# persists "NSStatusItem VisibleCC" = 0, so it stays gone across relaunches), and
+# flags non-zero exits — neither leaves a log anywhere. So: every anomalous run is
+# recorded here. The log lives in the machine-local state dir (survives reboots,
+# unlike /tmp; not iCloud-synced) and is size-capped so it can run unattended.
+_PLUGIN_LOG="{{home}}/.config/claude-toolkit/state/menubar-plugin.log"
+_PLUGIN_LOG_MAX_BYTES=262144
+_MODE=display; [[ "${CLAUDE_MENU_RENDER:-}" == "1" ]] && _MODE=render
+
+_plugin_log() {
+    mkdir -p "${_PLUGIN_LOG%/*}" 2>/dev/null
+    if (( $(stat -f %z "$_PLUGIN_LOG" 2>/dev/null || echo 0) > _PLUGIN_LOG_MAX_BYTES )); then
+        tail -c $(( _PLUGIN_LOG_MAX_BYTES / 2 )) "$_PLUGIN_LOG" > "$_PLUGIN_LOG.tmp" 2>/dev/null \
+            && mv "$_PLUGIN_LOG.tmp" "$_PLUGIN_LOG"
+    fi
+    printf '%s [%s pid=%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$_MODE" $$ "$*" >> "$_PLUGIN_LOG"
+}
+
+# Record (NOT log) every failing simple command; the EXIT trap reports only the
+# last one and only when the whole run ends non-zero — benign no-match greps and
+# guard-clause failures stay silent.
+_LAST_ERR=""
+trap '_LAST_ERR="line=$LINENO cmd=[$BASH_COMMAND]"' ERR
+
+_on_exit() {
+    local rc=$1
+    [[ "$_MODE" == render ]] && rm -f "$_RENDER_LOCK"
+    (( rc != 0 )) && _plugin_log "ABNORMAL exit rc=$rc — last failed: ${_LAST_ERR:-none recorded}"
+    return 0
+}
+trap '_on_exit $?' EXIT
+# SwiftBar closing our stdout mid-write kills the run via SIGPIPE, normally with
+# no trace — the prime suspect for click-time disappearance. Log it explicitly.
+trap '_plugin_log "SIGPIPE — stdout closed by SwiftBar mid-write"; exit 141' PIPE
+
+# Test seam: `source claude.10s.sh` (bats) gets the helpers above and stops here,
+# before any display/render side effect. Executed normally, `return` fails
+# (suppressed) and the script continues.
+return 0 2>/dev/null || true
 
 _spawn_bg_render() {
     # One render at a time — ticks/clicks during an in-flight render are no-ops.
@@ -67,6 +110,7 @@ if [[ "$CLAUDE_MENU_RENDER" != "1" ]]; then
     # icon appears instantly, and build the real menu in the background. The next
     # tick (≤10s) serves the real cache. Emitting non-empty output here is essential
     # — SwiftBar removes the menu-bar item entirely on empty stdout.
+    _plugin_log "no cache ($_MENU_CACHE) — served boot placeholder, kicked bg render"
     printf '\033[38;5;214m✻ \033[38;5;243m…\033[0m | ansi=true size=10 font=%s\n' "$MENUBAR_FONT"
     _spawn_bg_render
     exit 0
@@ -77,9 +121,11 @@ fi
 # goes to a per-PID temp that is promoted to the live cache only when non-empty, so
 # a killed or raced writer can never publish a 0-byte cache (which SwiftBar would
 # render as a vanished icon).
-trap 'rm -f "$_RENDER_LOCK"' EXIT
+# Lock cleanup happens in _on_exit (forensics block above). An empty render is
+# never published — and since an empty cache is what ultimately blanks the icon,
+# it is also logged.
 _MENU_CACHE_TMP="$_MENU_CACHE.$$.tmp"
-exec > >(tee "$_MENU_CACHE_TMP" >/dev/null; if [[ -s "$_MENU_CACHE_TMP" ]]; then mv "$_MENU_CACHE_TMP" "$_MENU_CACHE"; else rm -f "$_MENU_CACHE_TMP"; fi)
+exec > >(tee "$_MENU_CACHE_TMP" >/dev/null; if [[ -s "$_MENU_CACHE_TMP" ]]; then mv "$_MENU_CACHE_TMP" "$_MENU_CACHE"; else rm -f "$_MENU_CACHE_TMP"; _plugin_log "render produced EMPTY output — cache left untouched"; fi)
 
 POLL_SCRIPT="{{scripts_dir}}/claude-usage-poll.sh"
 TMUX_BIN={{tmux}}
