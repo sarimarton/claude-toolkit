@@ -6,7 +6,27 @@ import path from 'node:path';
 import { resolveConfig } from '../core/config.js';
 import { getAllModuleStatuses } from '../core/module-registry.js';
 import { readSidecar, readSettings } from '../core/settings-manager.js';
+import { evaluateSwiftBarBuild } from '../core/swiftbar-version.js';
 import type { ModuleStatusInfo, ResolvedConfig } from '../core/types.js';
+
+/** Read SwiftBar.app's CFBundleVersion, or null if the app isn't present. */
+function readSwiftBarBuild(): number | null {
+  for (const base of ['/Applications', `${process.env.HOME}/Applications`]) {
+    const plist = `${base}/SwiftBar.app/Contents/Info.plist`;
+    if (!fs.existsSync(plist)) continue;
+    try {
+      const out = execSync(
+        `/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "${plist}"`,
+        { encoding: 'utf-8' },
+      ).trim();
+      const n = parseInt(out, 10);
+      return Number.isNaN(n) ? 0 : n;
+    } catch {
+      return 0;
+    }
+  }
+  return null;
+}
 
 interface Check {
   label: string;
@@ -140,6 +160,21 @@ export function DoctorReport() {
           label: `${s.manifest.id}: missing assets: ${s.missingAssets.join(', ')}`,
           status: 'error',
           detail: 'Run claude-toolkit upgrade to reinstall',
+        });
+      }
+    }
+
+    // 8. SwiftBar version gate (only relevant if the menubar module is installed).
+    // 2.0.1 (build 536) has bug #442 — the menu-bar icon vanishes. We require the
+    // pinned 2.1.0-beta-2 build; a `brew upgrade --cask swiftbar` can silently
+    // revert to 2.0.1, so flag it here.
+    if (installed.some(s => s.manifest.id === 'menubar')) {
+      const verdict = evaluateSwiftBarBuild(readSwiftBarBuild());
+      if (verdict) {
+        results.push({
+          label: verdict.status === 'ok' ? `SwiftBar version OK` : `SwiftBar version outdated`,
+          status: verdict.status,
+          detail: verdict.detail,
         });
       }
     }
