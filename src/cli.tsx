@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import meow from 'meow';
+import chalk from 'chalk';
 import React from 'react';
 import { render } from 'ink';
 import { App } from './tui/App.js';
@@ -8,30 +9,36 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const cli = meow(`
-  Usage
-    $ claude-toolkit                   Interactive dashboard
-    $ claude-toolkit list              List all modules with status
-    $ claude-toolkit install [mod..]   Install modules (auto-resolves deps)
-    $ claude-toolkit uninstall         Dashboard (select + u to uninstall)
-    $ claude-toolkit uninstall [mod..] Uninstall specific modules
-    $ claude-toolkit uninstall all     Uninstall all modules
-    $ claude-toolkit status            Per-module health check
-    $ claude-toolkit doctor            Full integrity audit
-    $ claude-toolkit update            Pull latest from origin, rebuild, reinstall modules
-    $ claude-toolkit chart             Open usage chart in browser
-    $ claude-toolkit tools             List shell utilities shipped by installed modules
-    $ claude-toolkit run <tool> [..]   Run a module shell utility (see 'tools')
+// chalk auto-disables color when stdout is not a TTY or NO_COLOR is set, so the
+// help text stays plain under pipes/CI/`| less` without any manual guard. meow
+// prints the help string verbatim, so colorizing it here is enough (the README's
+// own tip: "See chalk if you want to colorize the terminal output").
+const helpText = `
+  ${chalk.bold('Usage')}
+    $ ${chalk.cyan('claude-toolkit')}                   Interactive dashboard
+    $ ${chalk.cyan('claude-toolkit list')}              List all modules with status
+    $ ${chalk.cyan('claude-toolkit install')} [mod..]   Install modules (auto-resolves deps)
+    $ ${chalk.cyan('claude-toolkit uninstall')}         Dashboard (select + u to uninstall)
+    $ ${chalk.cyan('claude-toolkit uninstall')} [mod..] Uninstall specific modules
+    $ ${chalk.cyan('claude-toolkit uninstall all')}     Uninstall all modules
+    $ ${chalk.cyan('claude-toolkit status')}            Per-module health check
+    $ ${chalk.cyan('claude-toolkit doctor')}            Full integrity audit
+    $ ${chalk.cyan('claude-toolkit update')}            Pull latest from origin, rebuild, reinstall modules
+    $ ${chalk.cyan('claude-toolkit chart')}             Open usage chart in browser
+    $ ${chalk.cyan('claude-toolkit tools')}             List shell utilities shipped by installed modules
+    $ ${chalk.cyan('claude-toolkit run')} <tool> [..]   Run a module shell utility (see 'tools')
 
-  Options
-    --help       Show this help
-    --version    Show version
-    --yes, -y    Skip confirmation prompts
+  ${chalk.bold('Options')}
+    ${chalk.cyan('--help')}       Show this help
+    ${chalk.cyan('--version')}    Show version
+    ${chalk.cyan('--yes, -y')}    Skip confirmation prompts
 
-  Module shell utilities (crt, claude-tmux, …) stay available under their own
-  names on PATH. 'claude-toolkit tools' lists them in one place; 'run' invokes
-  them through the toolkit.
-`, {
+  ${chalk.dim('Module shell utilities (crt, claude-tmux, …) stay available under their own')}
+  ${chalk.dim("names on PATH. 'claude-toolkit tools' lists them in one place; 'run' invokes")}
+  ${chalk.dim('them through the toolkit.')}
+`;
+
+const cli = meow(helpText, {
   importMeta: import.meta,
   flags: {
     yes: {
@@ -77,20 +84,15 @@ if (command === 'tools' || command === 'run') {
       console.log('No module shell utilities installed. Install modules first: claude-toolkit install');
       process.exit(0);
     }
-    // Minimal, dependency-free color — only when writing to a real terminal and
-    // NO_COLOR is unset (the de-facto standard). Pipes/CI/`| less` get plain text.
-    const color = process.stdout.isTTY && !process.env.NO_COLOR;
-    const bold = (s: string) => (color ? `\x1b[1m${s}\x1b[0m` : s);
-    const cyan = (s: string) => (color ? `\x1b[1;36m${s}\x1b[0m` : s);   // tool name/usage
-    const dim = (s: string) => (color ? `\x1b[2m${s}\x1b[0m` : s);       // run hint
-
+    // chalk handles the isTTY / NO_COLOR gating itself, so pipes/CI get plain text.
+    // Pad on the RAW label before coloring so ANSI bytes don't skew column width.
     const width = Math.max(...tools.map(t => (t.usage || t.name).length));
-    console.log('\n  ' + bold('Module shell utilities') + ' (also available under their own names on PATH):\n');
+    console.log('\n  ' + chalk.bold('Module shell utilities') + ' (also available under their own names on PATH):\n');
     for (const t of tools) {
       const label = (t.usage || t.name).padEnd(width);
-      console.log(`    ${cyan(label)}   ${t.description}`);
+      console.log(`    ${chalk.cyan(label)}   ${t.description}`);
     }
-    console.log('\n  ' + dim('Run via:  claude-toolkit run <tool> [args…]   (or call <tool> directly)') + '\n');
+    console.log('\n  ' + chalk.dim('Run via:  claude-toolkit run <tool> [args…]   (or call <tool> directly)') + '\n');
     process.exit(0);
   }
 
