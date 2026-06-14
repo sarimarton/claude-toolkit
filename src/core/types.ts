@@ -82,6 +82,24 @@ export interface ExternalDependency {
   fixHint?: string;
 }
 
+/**
+ * A user-facing shell utility a module ships (e.g. `crt`, `claude-tmux`). These
+ * are aggregated under `claude-toolkit tools` (discovery) and runnable via
+ * `claude-toolkit run <name>` — without replacing the module's own PATH symlink,
+ * which keeps working. The manifest is the single source of truth for what tools
+ * exist; the `script` is the asset filename under the module's scripts dir.
+ */
+export interface CliTool {
+  /** Canonical tool name as shown in listings (e.g. "crt", "claude-ultraresume"). */
+  name: string;
+  /** One-line description of what it does. */
+  description: string;
+  /** The installed script filename under config.scriptsDir (e.g. "claude-resume-topic.sh"). */
+  script: string;
+  /** Optional usage hint shown in listings (e.g. "crt <query…>"). */
+  usage?: string;
+}
+
 /** Module manifest — the complete definition of a module */
 export interface ModuleManifest {
   /** Unique module ID (directory name) */
@@ -104,6 +122,8 @@ export interface ModuleManifest {
   assets: AssetDefinition[];
   /** Slash commands to install */
   commands?: AssetDefinition[];
+  /** User-facing shell utilities, surfaced under `claude-toolkit tools` / `run`. */
+  cli?: CliTool[];
   /**
    * tmux config additions. The toolkit does NOT edit the user's hand-written,
    * version-controlled ~/.config/tmux/tmux.conf. Instead it writes a generated,

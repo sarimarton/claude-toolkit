@@ -50,6 +50,14 @@ export const manifest: ModuleManifest = {
       executable: false,
     },
   ],
+  cli: [
+    {
+      name: 'claude-tmux',
+      description: 'Drive an interactive Claude TUI in a tmux pane as a `claude -p` drop-in',
+      script: 'claude-tmux',
+      usage: 'claude-tmux <prompt>',
+    },
+  ],
   // Expose `claude-tmux` on PATH (~/.local/bin is what setup.sh adds), so it can be
   // used as a `claude -p` drop-in from anywhere. The parser (claude-tmux-parse.py)
   // is an internal helper called by absolute path, so it is NOT symlinked.

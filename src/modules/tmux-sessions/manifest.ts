@@ -41,4 +41,12 @@ export const manifest: ModuleManifest = {
       executable: false,
     },
   ],
+  cli: [
+    {
+      name: 'ts',
+      description: 'Scan all tmux panes and summarize the AI sessions via Claude',
+      script: 'tmux-sessions.sh',
+      usage: 'ts',
+    },
+  ],
 };

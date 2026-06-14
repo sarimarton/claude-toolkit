@@ -31,6 +31,14 @@ export const manifest: ModuleManifest = {
       executable: true,
     },
   ],
+  cli: [
+    {
+      name: 'crt',
+      description: 'Resume a past Claude session by fuzzy-matching its $topic marker',
+      script: 'claude-resume-topic.sh',
+      usage: 'crt [-l|-n] <query…>',
+    },
+  ],
   // Expose the resume CLI as `crt` on PATH (~/.local/bin is what setup.sh adds).
   postInstall: 'mkdir -p "$HOME/.local/bin" && ln -sf "{{scripts_dir}}/claude-resume-topic.sh" "$HOME/.local/bin/crt"',
   postUninstall: 'rm -f "$HOME/.local/bin/crt"',

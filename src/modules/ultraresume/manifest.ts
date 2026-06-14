@@ -31,6 +31,14 @@ export const manifest: ModuleManifest = {
     // Claude Code does NOT read — postInstall symlinks it into ~/.claude/commands.
     { source: 'ultraresume.md.tpl', target: 'commands', filename: 'ultraresume.md', executable: false },
   ],
+  cli: [
+    {
+      name: 'claude-ultraresume',
+      description: 'Resume the prior session shown in this pane\'s scrollback, by its $topic marker',
+      script: 'claude-ultraresume.sh',
+      usage: 'claude-ultraresume [-n] [topic words…]',
+    },
+  ],
   // Land the slash command where Claude Code loads user commands, and expose the
   // external CLI on PATH (~/.local/bin is what setup.sh adds).
   postInstall:

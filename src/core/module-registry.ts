@@ -160,6 +160,49 @@ export function getAllModuleStatuses(config: ResolvedConfig): ModuleStatusInfo[]
   return ALL_MANIFESTS.map(m => getModuleStatus(m, config));
 }
 
+/** A CLI tool resolved for listing/running: manifest fields + script path + owner. */
+export interface ResolvedCliTool {
+  name: string;
+  description: string;
+  usage?: string;
+  /** Absolute path to the runnable script under the scripts dir. */
+  path: string;
+  /** The module that ships this tool. */
+  moduleId: string;
+}
+
+/**
+ * Aggregate the CLI tools contributed by INSTALLED modules. Pure over its inputs
+ * (manifests, the installed-id set, the scripts dir) so it is unit-testable; the
+ * config-bound wrapper getInstalledCliTools() feeds it live values. Sorted by
+ * name for a stable listing.
+ */
+export function collectCliTools(
+  manifests: Pick<ModuleManifest, 'id' | 'cli'>[],
+  installedIds: Set<string>,
+  scriptsDir: string,
+): ResolvedCliTool[] {
+  const tools: ResolvedCliTool[] = [];
+  for (const m of manifests) {
+    if (!m.cli || !installedIds.has(m.id)) continue;
+    for (const t of m.cli) {
+      tools.push({
+        name: t.name,
+        description: t.description,
+        usage: t.usage,
+        path: path.join(scriptsDir, t.script),
+        moduleId: m.id,
+      });
+    }
+  }
+  return tools.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Live CLI tools for all currently-installed modules. */
+export function getInstalledCliTools(config: ResolvedConfig): ResolvedCliTool[] {
+  return collectCliTools(ALL_MANIFESTS, getInstalledModuleIds(config), config.scriptsDir);
+}
+
 /** Get set of currently installed module IDs */
 export function getInstalledModuleIds(config: ResolvedConfig): Set<string> {
   const installed = new Set<string>();
