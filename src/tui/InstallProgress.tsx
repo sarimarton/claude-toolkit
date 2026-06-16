@@ -5,7 +5,7 @@ import { getAllManifests, getInstalledModuleIds, getModuleStatus } from '../core
 import { resolveInstall, resolveUninstall } from '../core/dependency-resolver.js';
 import { registerHooks, unregisterHooks, recordAssetHashes, removeAssetHashes } from '../core/settings-manager.js';
 import { applyTmuxConfig, removeTmuxConfig } from '../core/tmux-config-manager.js';
-import { applyClaudeMdBlock, removeClaudeMdBlock } from '../core/claude-md-manager.js';
+import { applyClaudeMdBlock, removeClaudeMdBlock, ensureClaudeMdImport, removeClaudeMdImport } from '../core/claude-md-manager.js';
 import { buildVarMap, renderTemplate, installTemplate, renderTemplateFile, contentHash } from '../core/template-engine.js';
 import type { ModuleManifest, ResolvedConfig } from '../core/types.js';
 import { execSync } from 'node:child_process';
@@ -81,12 +81,15 @@ function doInstall(manifest: ModuleManifest, config: ResolvedConfig, modulesDir:
     });
   }
 
-  // Write CLAUDE.md policy drop-ins (render the block body with template vars).
+  // Write CLAUDE.md policy drop-ins (render the block body with template vars) and
+  // auto-wire the @import into the canonical ~/.claude/CLAUDE.md (marked, idempotent,
+  // augment-only — see claude-md-manager.ts).
   if (manifest.claudeMdBlocks) {
     for (const block of manifest.claudeMdBlocks) {
       const tplPath = path.join(modulesDir, manifest.id, 'assets', block.source);
       const body = renderTemplateFile(tplPath, vars);
       applyClaudeMdBlock(config, manifest.id, block.sectionId, body);
+      ensureClaudeMdImport(config, manifest.id, block.sectionId);
     }
   }
 
@@ -123,10 +126,11 @@ function doUninstall(manifest: ModuleManifest, config: ResolvedConfig): void {
     removeTmuxConfig(config, manifest.id);
   }
 
-  // Remove CLAUDE.md policy drop-ins
+  // Remove CLAUDE.md policy drop-ins + their auto-wired @import lines
   if (manifest.claudeMdBlocks) {
     for (const block of manifest.claudeMdBlocks) {
       removeClaudeMdBlock(config, manifest.id, block.sectionId);
+      removeClaudeMdImport(config, manifest.id, block.sectionId);
     }
   }
 

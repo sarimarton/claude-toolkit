@@ -65,3 +65,79 @@ export function removeClaudeMdBlock(
   const target = dropinPath(config, moduleId, sectionId);
   if (fs.existsSync(target)) fs.unlinkSync(target);
 }
+
+/**
+ * The canonical user-level CLAUDE.md the toolkit augments. Per the Claude Code
+ * docs the documented user memory path is ~/.claude/CLAUDE.md (NOT ~/CLAUDE.md,
+ * which is legacy/undocumented). We target the documented path so the import is
+ * future-proof.
+ */
+function userClaudeMdPath(config: ResolvedConfig): string {
+  return path.join(config.claudeDir, 'CLAUDE.md');
+}
+
+const MARK_PREFIX = '<!-- claude-toolkit:';
+
+function markerComment(moduleId: string, sectionId: string): string {
+  return `${MARK_PREFIX}${moduleId}-${sectionId} (managed) -->`;
+}
+
+/**
+ * Ensure the canonical ~/.claude/CLAUDE.md @imports a module's drop-in, with the
+ * minimal, automated invasiveness the policy allows:
+ *  - MARKED: each managed line is preceded by a unique marker comment, so we touch
+ *    only our own lines, never the user's.
+ *  - IDEMPOTENT: re-running makes no change if the marker is already present.
+ *  - AUGMENT, NOT BOOTSTRAP: only writes if ~/.claude/CLAUDE.md already exists.
+ *    (A fresh machine with no user memory file is left untouched — the postInstall
+ *    prints the line to add instead.)
+ *  - IN-PLACE: reads + rewrites the SAME path (no tmp+rename), so if the file is a
+ *    symlink the link is followed and preserved (the link target is written, the
+ *    link itself is never replaced).
+ * Returns true if a line was added, false if it was already present or the file
+ * does not exist (augment-only).
+ */
+export function ensureClaudeMdImport(
+  config: ResolvedConfig,
+  moduleId: string,
+  sectionId: string,
+): boolean {
+  const target = userClaudeMdPath(config);
+  if (!fs.existsSync(target)) return false; // augment, don't bootstrap
+
+  const marker = markerComment(moduleId, sectionId);
+  const current = fs.readFileSync(target, 'utf-8');
+  if (current.includes(marker)) return false; // idempotent
+
+  const importLine = claudeMdImportLine(config, moduleId, sectionId);
+  const block = `\n${marker}\n${importLine}\n`;
+  fs.writeFileSync(target, current.replace(/\n*$/, '\n') + block);
+  return true;
+}
+
+/**
+ * Remove a module's managed @import line (and its marker) from ~/.claude/CLAUDE.md.
+ * Only the marker line and the single line that follows it are removed — the user's
+ * own content is never touched. No-op if the file or marker is absent.
+ */
+export function removeClaudeMdImport(
+  config: ResolvedConfig,
+  moduleId: string,
+  sectionId: string,
+): void {
+  const target = userClaudeMdPath(config);
+  if (!fs.existsSync(target)) return;
+
+  const marker = markerComment(moduleId, sectionId);
+  const lines = fs.readFileSync(target, 'utf-8').split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === marker) {
+      i++; // also skip the @import line that follows the marker
+      continue;
+    }
+    out.push(lines[i]);
+  }
+  // Collapse the blank line we may have left behind, keep a trailing newline.
+  fs.writeFileSync(target, out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n*$/, '\n'));
+}

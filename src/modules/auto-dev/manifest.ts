@@ -157,6 +157,5 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
   ],
   postInstall:
     'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository." && ' +
-    'echo "GitHub-sync policy written to {{claude_md_dir}}/auto-dev-github-sync.md — add this line to ~/.claude/CLAUDE.md once:" && ' +
-    'echo "  @{{claude_md_dir}}/auto-dev-github-sync.md"',
+    'echo "GitHub-sync policy written to {{claude_md_dir}}/auto-dev-github-sync.md and auto-imported into ~/.claude/CLAUDE.md (if it exists)."',
 };
