@@ -149,5 +149,14 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
       executable: true,
     },
   ],
-  postInstall: 'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository."',
+  // The GitHub-tracking-sync policy that governs how interactive Claude should keep
+  // board/issue/PR in sync inside auto-dev repos. Lives with the module (source of
+  // truth) and is injected into the user-level CLAUDE.md via the @import drop-in.
+  claudeMdBlocks: [
+    { source: 'github-sync-policy.md.tpl', sectionId: 'github-sync' },
+  ],
+  postInstall:
+    'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository." && ' +
+    'echo "GitHub-sync policy written to {{claude_md_dir}}/auto-dev-github-sync.md — add this line to ~/.claude/CLAUDE.md once:" && ' +
+    'echo "  @{{claude_md_dir}}/auto-dev-github-sync.md"',
 };

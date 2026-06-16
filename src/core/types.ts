@@ -137,6 +137,12 @@ export interface ModuleManifest {
    * delete it. Only applied if the main tmux.conf exists (augment, don't create).
    */
   tmuxConf?: TmuxConfigPatch;
+  /**
+   * Markdown policy blocks this module contributes to the user-level CLAUDE.md.
+   * Each block is written to a toolkit-owned drop-in file the user @imports once
+   * (the toolkit never edits the hand-written CLAUDE.md). See claude-md-manager.ts.
+   */
+  claudeMdBlocks?: ClaudeMdBlock[];
   /** Command template to run after install (e.g. for custom build steps) */
   postInstall?: string;
   /** Command template to run after uninstall (e.g. for cleanup) */
@@ -160,6 +166,23 @@ export interface TmuxConfigPatch {
   lines: string[];
   /** Directives that override a main-config setting via last-write-wins. */
   overrides?: string[];
+}
+
+/**
+ * A markdown policy block a module injects into the user-level CLAUDE.md.
+ *
+ * The toolkit never edits the hand-written ~/.claude/CLAUDE.md. Instead it renders
+ * `source` into a toolkit-owned drop-in file
+ *   {{install_dir}}/claude-md/<moduleId>-<sectionId>.md
+ * which the user references once via a stable @import line (CLAUDE.md supports
+ * `@~/path` imports but NOT globs, so the import targets this fixed path). Install
+ * (re)writes the drop-in; uninstall deletes it. Same ownership split as tmuxConf.
+ */
+export interface ClaudeMdBlock {
+  /** Asset template filename under the module's assets/ dir (e.g. "github-sync-policy.md.tpl"). */
+  source: string;
+  /** Stable id for the drop-in filename + sidecar tracking (e.g. "github-sync"). */
+  sectionId: string;
 }
 
 /** Resolved paths from config + auto-detection */
@@ -190,6 +213,8 @@ export interface ResolvedConfig {
   commandsDir: string;
   /** Skills directory (~/.claude/skills — where Claude Code discovers SKILL.md skills) */
   skillsDir: string;
+  /** CLAUDE.md drop-in directory (installDir/claude-md — toolkit-owned policy blocks the user @imports) */
+  claudeMdDir: string;
   /** SwiftBar deploy directory (~/.config/claude-toolkit/swiftbar — where assets land) */
   swiftbarDir: string;
   /** SwiftBar plugin directory (where SwiftBar looks — contains symlinks to swiftbarDir) */

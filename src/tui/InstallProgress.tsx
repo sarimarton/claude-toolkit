@@ -5,6 +5,7 @@ import { getAllManifests, getInstalledModuleIds, getModuleStatus } from '../core
 import { resolveInstall, resolveUninstall } from '../core/dependency-resolver.js';
 import { registerHooks, unregisterHooks, recordAssetHashes, removeAssetHashes } from '../core/settings-manager.js';
 import { applyTmuxConfig, removeTmuxConfig } from '../core/tmux-config-manager.js';
+import { applyClaudeMdBlock, removeClaudeMdBlock } from '../core/claude-md-manager.js';
 import { buildVarMap, renderTemplate, installTemplate, renderTemplateFile, contentHash } from '../core/template-engine.js';
 import type { ModuleManifest, ResolvedConfig } from '../core/types.js';
 import { execSync } from 'node:child_process';
@@ -80,6 +81,15 @@ function doInstall(manifest: ModuleManifest, config: ResolvedConfig, modulesDir:
     });
   }
 
+  // Write CLAUDE.md policy drop-ins (render the block body with template vars).
+  if (manifest.claudeMdBlocks) {
+    for (const block of manifest.claudeMdBlocks) {
+      const tplPath = path.join(modulesDir, manifest.id, 'assets', block.source);
+      const body = renderTemplateFile(tplPath, vars);
+      applyClaudeMdBlock(config, manifest.id, block.sectionId, body);
+    }
+  }
+
   // Run post-install command
   if (manifest.postInstall) {
     const cmd = renderTemplate(manifest.postInstall, vars);
@@ -111,6 +121,13 @@ function doUninstall(manifest: ModuleManifest, config: ResolvedConfig): void {
   // Remove tmux.conf marker block + restore any in-place edits
   if (manifest.tmuxConf) {
     removeTmuxConfig(config, manifest.id);
+  }
+
+  // Remove CLAUDE.md policy drop-ins
+  if (manifest.claudeMdBlocks) {
+    for (const block of manifest.claudeMdBlocks) {
+      removeClaudeMdBlock(config, manifest.id, block.sectionId);
+    }
   }
 
   // Run post-uninstall command

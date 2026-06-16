@@ -81,6 +81,7 @@ export function resolveConfig(): ResolvedConfig {
   const scriptsDir = path.join(installDir, 'scripts');
   const binDir = path.join(installDir, 'bin');
   const commandsDir = path.join(installDir, 'commands');
+  const claudeMdDir = path.join(installDir, 'claude-md');
   const helpersDir = path.join(installDir, 'helpers');
   const swiftbarDir = path.join(installDir, 'swiftbar');
 
@@ -112,6 +113,7 @@ export function resolveConfig(): ResolvedConfig {
     scriptsDir,
     binDir,
     commandsDir,
+    claudeMdDir,
     skillsDir: path.join(HOME, '.claude', 'skills'),
     swiftbarDir,
     swiftbarPluginDir,
@@ -130,7 +132,7 @@ export function resolveConfig(): ResolvedConfig {
 
 /** Ensure all install directories exist */
 export function ensureInstallDirs(config: ResolvedConfig): void {
-  for (const dir of [config.hooksDir, config.scriptsDir, config.binDir, config.commandsDir, config.skillsDir, config.swiftbarDir, config.helpersDir, config.launchAgentsDir]) {
+  for (const dir of [config.hooksDir, config.scriptsDir, config.binDir, config.commandsDir, config.claudeMdDir, config.skillsDir, config.swiftbarDir, config.helpersDir, config.launchAgentsDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
