@@ -21,6 +21,7 @@ import { manifest as vscodeTmux } from '../modules/vscode-tmux/manifest.js';
 import { manifest as dualConfig } from '../modules/dual-config/manifest.js';
 import { manifest as vscodeTerminalTopic } from '../modules/vscode-terminal-topic/manifest.js';
 import { manifest as autoDev } from '../modules/auto-dev/manifest.js';
+import { manifest as autoDevInstaller } from '../modules/auto-dev-installer/manifest.js';
 import { manifest as stableClaudeBin } from '../modules/stable-claude-bin/manifest.js';
 import { manifest as tmuxBridge } from '../modules/tmux-bridge/manifest.js';
 import { manifest as llmCleanupServer } from '../modules/llm-cleanup-server/manifest.js';
@@ -42,6 +43,7 @@ const ALL_MANIFESTS: ModuleManifest[] = [
   dualConfig,
   vscodeTerminalTopic,
   autoDev,
+  autoDevInstaller,
   stableClaudeBin,
   tmuxBridge,
   llmCleanupServer,

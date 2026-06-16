@@ -48,7 +48,7 @@ export interface HookRegistration {
 }
 
 /** Asset target location */
-export type AssetTarget = 'hooks' | 'scripts' | 'commands' | 'swiftbar' | 'launchagents' | 'bin';
+export type AssetTarget = 'hooks' | 'scripts' | 'commands' | 'skills' | 'swiftbar' | 'launchagents' | 'bin';
 
 /** Asset to install */
 export interface AssetDefinition {
@@ -188,6 +188,8 @@ export interface ResolvedConfig {
   binDir: string;
   /** Commands directory */
   commandsDir: string;
+  /** Skills directory (~/.claude/skills — where Claude Code discovers SKILL.md skills) */
+  skillsDir: string;
   /** SwiftBar deploy directory (~/.config/claude-toolkit/swiftbar — where assets land) */
   swiftbarDir: string;
   /** SwiftBar plugin directory (where SwiftBar looks — contains symlinks to swiftbarDir) */

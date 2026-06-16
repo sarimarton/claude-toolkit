@@ -112,6 +112,7 @@ export function resolveConfig(): ResolvedConfig {
     scriptsDir,
     binDir,
     commandsDir,
+    skillsDir: path.join(HOME, '.claude', 'skills'),
     swiftbarDir,
     swiftbarPluginDir,
     helpersDir,
@@ -129,7 +130,7 @@ export function resolveConfig(): ResolvedConfig {
 
 /** Ensure all install directories exist */
 export function ensureInstallDirs(config: ResolvedConfig): void {
-  for (const dir of [config.hooksDir, config.scriptsDir, config.binDir, config.commandsDir, config.swiftbarDir, config.helpersDir, config.launchAgentsDir]) {
+  for (const dir of [config.hooksDir, config.scriptsDir, config.binDir, config.commandsDir, config.skillsDir, config.swiftbarDir, config.helpersDir, config.launchAgentsDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -141,6 +142,7 @@ export function getTargetDir(config: ResolvedConfig, target: string): string {
     case 'scripts': return config.scriptsDir;
     case 'bin': return config.binDir;
     case 'commands': return config.commandsDir;
+    case 'skills': return config.skillsDir;
     case 'swiftbar': return config.swiftbarDir;
     case 'launchagents': return config.launchAgentsDir;
     default: return config.installDir;
