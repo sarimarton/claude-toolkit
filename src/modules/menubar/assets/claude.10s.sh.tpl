@@ -14,7 +14,7 @@
 # <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>
 # <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 # <swiftbar.hideSwiftBar>true</swiftbar.hideSwiftBar>
-# <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
+# <swiftbar.refreshOnOpen>false</swiftbar.refreshOnOpen>
 # <swiftbar.alwaysVisible>true</swiftbar.alwaysVisible>
 
 export PATH="{{home}}/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
@@ -27,14 +27,26 @@ MENUBAR_FONT="BarlowSemiCondensed-Medium"
 MENUBAR_STYLE="ansi=true size=12 font=$MENUBAR_FONT"
 
 # ── Cache-first rendering — the display path NEVER does slow work ──
-# SwiftBar runs this script in two situations: every 10s (background tick) and on
-# every dropdown open (refreshOnOpen, blocking). The full render below is heavy,
-# especially at boot — it enumerates tmux panes (slow while tmux-resurrect is still
-# restoring them), runs git/gh update checks, and shells out to auto-dev. If that
-# heavy render ran synchronously on a dropdown open, two bad things happened:
-#   1. The click felt slow ("Starting Claude…" lingered for seconds).
-#   2. When the slow run finally finished, SwiftBar rebuilt the *already-open*
-#      NSMenu, which dismisses it — the menu "disappeared" out from under the click.
+# SwiftBar runs this script in two situations: every 10s (background tick) and —
+# previously — on every dropdown open (refreshOnOpen). The full render below is
+# heavy, especially at boot — it enumerates tmux panes (slow while tmux-resurrect is
+# still restoring them), runs git/gh update checks, and shells out to auto-dev.
+#
+# refreshOnOpen is now DISABLED (was true until 2026-06-16). RCA: with it on, the
+# click→dropdown path wedged. A live `sample` of the stuck app caught the main
+# thread inside -[NSCocoaMenuImpl popUpMenu:] → -[NSConcreteFileHandle
+# readDataOfLength:] → read(2): SwiftBar opens the menu, then synchronously RE-RUNS
+# the plugin and BLOCKS reading its stdout. Our display path detaches the heavy work
+# via `exec > >(tee …)` (process substitution) — but that substitution is an extra
+# child shell that inherits SwiftBar's stdout pipe and keeps its write end open, so
+# SwiftBar's synchronous read() never sees EOF and the menu-open hangs. This is why
+# ONLY the Claude menu was affected (sole refreshOnOpen + process-substitution
+# plugin) and why it worsened after opening sessions (more in-flight renders → higher
+# odds a render straddles the click). The 10s background tick already keeps the menu
+# ≤10s fresh, so refreshOnOpen bought nothing but this wedge — disabling it is the
+# fix, not a tradeoff. The cache-first display path below still stands (it keeps the
+# tick itself cheap and the boot placeholder instant).
+#
 # Fix: the foreground (display) invocation ONLY ever serves the cache, and kicks the
 # refresh off in a detached background process. SwiftBar therefore always gets
 # instant output and never rebuilds the open menu mid-interaction. The heavy render
