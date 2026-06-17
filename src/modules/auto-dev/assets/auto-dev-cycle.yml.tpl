@@ -802,6 +802,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.state.outputs.pr_number }}
           _TODO: ${{ steps.implement.outputs.todo }}
+          MODEL: ${{ steps.state.outputs.model }}
         run: |
           SUMMARY=$(jq -r '.structured_output.summary // "Task completed."' "$WORK_DIR/implement-result.json" 2>/dev/null)
           TODO="$_TODO"
@@ -811,9 +812,70 @@ jobs:
           REMAINING=$(echo "$PR_BODY" | grep -c '^\- \[ \]' || true)
           MANUAL_REMAINING=$(echo "$PR_BODY" | grep -c '^\- \[ \] Manual validation:' || true)
 
-          if [[ "$REMAINING" -eq 0 ]]; then
+          # >>> demo-ceremony-fn >>>
+          # When the LAST task of a PR completes, a user-observable *feature*
+          # earns a "how to try it" demo as the FINAL PR comment — the sibling of
+          # the GitHub-sync policy's "runnable artifact → copy-paste usage" rule,
+          # but scoped to PR close and feature-only. Bugfixes/refactors/infra get
+          # nothing extra. The feature-vs-not call is made by the model (shell
+          # can't tell), which returns {"demo": <markdown> | null}.
+          #
+          # Kept as a sourceable function so test/auto-dev-demo.bats can exercise
+          # the decision flow hermetically with claude/gh stubbed. CLAUDE_BIN is
+          # resolved by the caller (same tmux-bridge → stable → claude order as
+          # the plan/implement steps).
+          emit_demo_or_ready_comment() {
             gh pr edit "$PR_NUMBER" --ready-for-review 2>/dev/null || true
             gh pr comment "$PR_NUMBER" --body "🤖 **Auto-dev** — All tasks complete. Ready for review."
+
+            local PR_DIFF ISSUE_CTX DEMO_SCHEMA DEMO_RESULT DEMO_MD
+            PR_DIFF=$(gh pr diff "$PR_NUMBER" 2>/dev/null | head -c 60000 || true)
+            ISSUE_CTX=$(gh issue view "$ISSUE_NUMBER" --json title,body -q '"\(.title)\n\n\(.body)"' 2>/dev/null || true)
+
+            {
+              echo "An auto-dev PR just had its final task completed. Decide whether it shipped a"
+              echo "USER-OBSERVABLE FEATURE (something a person can now do, see, or run that they"
+              echo "could not before) and, if so, write a short demo a stakeholder can follow to try it."
+              echo ""
+              echo "RULES:"
+              echo "- If this is NOT a user-observable feature (bugfix, refactor, infra, chore, test,"
+              echo "  dependency bump, docs-only), output {\"demo\": null}. Do not invent a demo."
+              echo "- If it IS a feature, output {\"demo\": \"<markdown>\"} where the markdown:"
+              echo "  - starts with a '## 🎬 Demo — try it yourself' heading,"
+              echo "  - lists any prerequisites (setup, params, env),"
+              echo "  - gives a concrete COPY-PASTE command or click-path to exercise the feature,"
+              echo "  - states what the user should observe (expected output / visible result)."
+              echo "  Write it generically (no machine-specific absolute paths); speak to the stakeholder"
+              echo "  in the 'here's how you try it too' voice. Keep it tight — a few steps, not an essay."
+              echo "- Output ONLY valid JSON: {\"demo\": \"<markdown>\"} or {\"demo\": null}."
+              echo ""
+              printf -- '--- ISSUE ---\n%s\n\n' "$ISSUE_CTX"
+              printf -- '--- PR DIFF (truncated) ---\n%s\n' "$PR_DIFF"
+            } > "$WORK_DIR/demo-prompt.txt"
+
+            DEMO_SCHEMA='{"type":"object","properties":{"demo":{"type":["string","null"]}},"required":["demo"]}'
+            DEMO_RESULT=$("$CLAUDE_BIN" --dangerously-skip-permissions --model "$MODEL" --output-format json --json-schema "$DEMO_SCHEMA" -p "$(cat "$WORK_DIR/demo-prompt.txt")" 2>"$WORK_DIR/demo-stderr.txt") || true
+            echo "$DEMO_RESULT" > "$WORK_DIR/demo-result.json"
+
+            DEMO_MD=$(jq -r '.structured_output.demo // empty' "$WORK_DIR/demo-result.json" 2>/dev/null || true)
+            if [[ -n "$DEMO_MD" && "$DEMO_MD" != "null" ]]; then
+              printf '%s\n' "$DEMO_MD" > "$WORK_DIR/demo-comment.md"
+              gh pr comment "$PR_NUMBER" --body-file "$WORK_DIR/demo-comment.md"
+            fi
+          }
+          # <<< demo-ceremony-fn <<<
+
+          if [[ "$REMAINING" -eq 0 ]]; then
+            # Resolve CLAUDE_BIN (tmux-bridge → stable → claude) for the demo call.
+            CLAUDE_BIN=""
+            USE_TMUX_BRIDGE=$({{yq}} -r '.modules.autoDev.useTmuxBridge // false' "{{config_file}}" 2>/dev/null | head -n 1)
+            if [ "$USE_TMUX_BRIDGE" = "true" ] && [ -x "$HOME/.config/claude-toolkit/scripts/claude-tmux" ]; then
+              CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-tmux"
+            fi
+            if [ -z "$CLAUDE_BIN" ]; then
+              CLAUDE_BIN="$HOME/.config/claude-toolkit/scripts/claude-stable"; [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN=claude
+            fi
+            emit_demo_or_ready_comment
             gh issue edit "$ISSUE_NUMBER" \
               --remove-label "ai:in-progress" \
               --add-label "ai:done" 2>/dev/null || true
