@@ -155,7 +155,22 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
   claudeMdBlocks: [
     { source: 'github-sync-policy.md.tpl', sectionId: 'github-sync' },
   ],
+  // Prompt-facing surfaces that install Auto-dev into the CURRENT repo (resolved via
+  // `gh repo view`) — both are thin wrappers over auto-dev-runner-setup.sh above; no
+  // install logic is duplicated. (Formerly the standalone auto-dev-installer module,
+  // whose only purpose was to hard-dep this one — folded back in here.)
+  commands: [
+    // 'commands' renders into ~/.config/claude-toolkit/commands (Claude Code does NOT
+    // read there) — postInstall symlinks it into ~/.claude/commands.
+    { source: 'install-autodev.md.tpl', target: 'commands', filename: 'install-autodev.md', executable: false },
+    // 'skills' renders straight into ~/.claude/skills/install-autodev/SKILL.md, where
+    // Claude Code discovers skills directly (no symlink hop).
+    { source: 'install-autodev-SKILL.md.tpl', target: 'skills', filename: 'install-autodev/SKILL.md', executable: false },
+  ],
   postInstall:
     'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository." && ' +
-    'echo "GitHub-sync policy written to {{claude_md_dir}}/auto-dev-github-sync.md and auto-imported into ~/.claude/CLAUDE.md (if it exists)."',
+    'echo "GitHub-sync policy written to {{claude_md_dir}}/auto-dev-github-sync.md and auto-imported into ~/.claude/CLAUDE.md (if it exists)." && ' +
+    'mkdir -p "{{claude_dir}}/commands" && ln -sf "{{commands_dir}}/install-autodev.md" "{{claude_dir}}/commands/install-autodev.md"',
+  postUninstall:
+    'rm -f "{{claude_dir}}/commands/install-autodev.md" && rm -rf "{{skills_dir}}/install-autodev"',
 };
