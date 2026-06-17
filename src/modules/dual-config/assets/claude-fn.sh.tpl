@@ -9,14 +9,21 @@
 # The function syncs settings.json from ~/.claude → ~/.claude-apikey
 # (injecting apiKeyHelper) on every invocation, so both dirs stay in sync.
 
-# Prefer the TCC-stable launcher (stable-claude-bin module) so macOS file-access
-# grants survive Claude's silent version updates; fall back to the version symlink.
-CLAUDE_BIN={{scripts_dir}}/claude-stable
-[[ -x "$CLAUDE_BIN" ]] || CLAUDE_BIN={{claude}}
 CLAUDE_APIKEY_DIR="$HOME/.claude-apikey"
 
 claude() {
   local main_settings="$HOME/.claude/settings.json"
+
+  # Resolve the TCC-stable launcher INSIDE the function on every call — never via
+  # a top-level $CLAUDE_BIN global. Claude freezes this function into a shell
+  # snapshot, but a top-level assignment is fragile across snapshotting: a stale
+  # or non-carried-over global would make us fall through to the versioned path
+  # (~/.local/bin/claude), which pins the background daemon to versions/<X> and
+  # re-triggers the TCC folder-prompt flood on every silent update. Resolving
+  # here keeps the binary path snapshot-independent. Prefer the stable launcher;
+  # fall back to the version symlink only if it is genuinely absent.
+  local claude_bin={{scripts_dir}}/claude-stable
+  [[ -x "$claude_bin" ]] || claude_bin={{claude}}
 
   [[ ! -f "$main_settings" ]] && echo "{}" > "$main_settings"
 
@@ -37,10 +44,10 @@ claude() {
     {{jq}} --arg key "$ANTHROPIC_API_KEY" \
       '. + {apiKeyHelper: ("echo " + $key)}' \
       "$main_settings" > "$CLAUDE_APIKEY_DIR/settings.json"
-    CLAUDE_CONFIG_DIR="$CLAUDE_APIKEY_DIR" "$CLAUDE_BIN" "${extra_args[@]}" "$@"
+    CLAUDE_CONFIG_DIR="$CLAUDE_APIKEY_DIR" "$claude_bin" "${extra_args[@]}" "$@"
   else
     # Default: OAuth mode via ~/.claude
-    "$CLAUDE_BIN" "${extra_args[@]}" "$@"
+    "$claude_bin" "${extra_args[@]}" "$@"
   fi
 }
 alias c='claude'
