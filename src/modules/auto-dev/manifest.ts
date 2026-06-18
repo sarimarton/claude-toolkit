@@ -154,6 +154,10 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
   // truth) and is injected into the user-level CLAUDE.md via the @import drop-in.
   claudeMdBlocks: [
     { source: 'github-sync-policy.md.tpl', sectionId: 'github-sync' },
+    // Ortogonális testvér-policy: a sync a "mit dokumentálj", ez a "hogyan
+    // strukturáld a munkát" (worktree + draft PR + négyfeltételes --no-ff
+    // merge gate). Külön sectionId → külön drop-in fájl + külön @import.
+    { source: 'worktree-policy.md.tpl', sectionId: 'worktree-policy' },
   ],
   // Prompt-facing surfaces that install Auto-dev into the CURRENT repo (resolved via
   // `gh repo view`) — both are thin wrappers over auto-dev-runner-setup.sh above; no
@@ -170,6 +174,7 @@ Setup: SwiftBar menu → "Install Auto-dev to repo…", or run:
   postInstall:
     'echo "auto-dev module installed. Run auto-dev-runner-setup.sh <owner/repo> to install into a target repository." && ' +
     'echo "GitHub-sync policy written to {{claude_md_dir}}/auto-dev-github-sync.md and auto-imported into ~/.claude/CLAUDE.md (if it exists)." && ' +
+    'echo "Worktree+PR-lifecycle policy written to {{claude_md_dir}}/auto-dev-worktree-policy.md and auto-imported into ~/.claude/CLAUDE.md (if it exists)." && ' +
     'mkdir -p "{{claude_dir}}/commands" && ln -sf "{{commands_dir}}/install-autodev.md" "{{claude_dir}}/commands/install-autodev.md"',
   postUninstall:
     'rm -f "{{claude_dir}}/commands/install-autodev.md" && rm -rf "{{skills_dir}}/install-autodev"',
