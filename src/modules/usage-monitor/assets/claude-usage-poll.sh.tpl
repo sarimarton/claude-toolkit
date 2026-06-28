@@ -144,6 +144,190 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
     return 1
   }
 
+  # ── Fast path: OAuth usage endpoint ─────────────────────
+  # The /usage TUI panel we scrape below is just a render of this endpoint. Read
+  # it at the source instead: one curl, ~300ms, no claude process, no tmux. The
+  # response carries five_hour.utilization (session %) and seven_day.utilization
+  # (weekly %) plus ISO-8601 resets_at strings — exactly the menubar contract.
+  # Only on any failure (no token, network, non-200, unparseable) do we fall
+  # through to the tmux-parse path, which stays as a resilient backup.
+  #
+  # Token source: multi-account passes its own OAuth token in ACCT_TOKEN; legacy
+  # single-account reads the local Claude Code credentials from the macOS keychain
+  # (same store the CLI itself uses).
+  try_api_poll() {
+    local token="$ACCT_TOKEN"
+    if [ -z "$token" ]; then
+      token=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null \
+                | python3 -c 'import sys,json; print(json.load(sys.stdin).get("claudeAiOauth",{}).get("accessToken",""))' 2>/dev/null)
+    fi
+    [ -z "$token" ] && return 1
+
+    local resp http
+    resp=$(curl -sS -m 15 -w '\n%{http_code}' https://api.anthropic.com/api/oauth/usage \
+             -H "Authorization: Bearer $token" \
+             -H "anthropic-beta: oauth-2025-04-20" 2>/dev/null)
+    [ -z "$resp" ] && return 1
+    http="${resp##*$'\n'}"
+    local body="${resp%$'\n'*}"
+    [ "$http" = "200" ] || return 1
+
+    local PHASES_JSON='["api"]'
+    export POLL_PHASES="$PHASES_JSON"
+    export USAGE_LOG
+    export PREV_USAGE_DATA=""
+    [ -f "$USAGE_FILE" ] && PREV_USAGE_DATA=$(cat "$USAGE_FILE" 2>/dev/null)
+
+    local acct_json=""
+    [ -n "$ACCT_NAME" ] && acct_json="$ACCT_NAME"
+    export USAGE_ACCOUNT="$acct_json"
+
+    local out
+    out=$(printf '%s' "$body" | python3 -c '
+# >>> API_PARSE_BEGIN
+import json, sys, time, os
+from datetime import datetime
+
+def parse_iso(s):
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        # Python <3.11 cannot parse "+00:00"-style offsets via fromisoformat in
+        # some builds; normalize a trailing "Z" and rely on fromisoformat for the
+        # numeric offset the API always sends.
+        return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp())
+    except Exception:
+        return None
+
+phases = json.loads(os.environ.get("POLL_PHASES", "[]"))
+result = {"ts": int(time.time()), "phases": phases}
+acct = os.environ.get("USAGE_ACCOUNT", "")
+if acct:
+    result["account"] = acct
+
+prev = {}
+try:
+    prev = json.loads(os.environ.get("PREV_USAGE_DATA", "{}"))
+except (json.JSONDecodeError, TypeError):
+    prev = {}
+
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    result["error"] = "api_parse_failed"
+    # Preserve last good figures so the menu shows stale-but-real, not blank.
+    if "last_success_ts" in prev:
+        result["last_success_ts"] = prev["last_success_ts"]
+    for k in ("pct", "reset_ts", "weekly_pct", "weekly_reset_ts"):
+        if k in prev:
+            result[k] = prev[k]
+    result["error_since_ts"] = prev.get("error_since_ts") or prev.get("ts") or result["ts"]
+    print(json.dumps(result))
+    sys.exit(0)
+
+def pct_of(block):
+    if not isinstance(block, dict):
+        return None
+    u = block.get("utilization")
+    if u is None:
+        return None
+    try:
+        return min(100, int(round(float(u))))
+    except (TypeError, ValueError):
+        return None
+
+session = d.get("five_hour") or {}
+weekly  = d.get("seven_day") or {}
+
+session_pct = pct_of(session)
+weekly_pct  = pct_of(weekly)
+session_reset = parse_iso(session.get("resets_at"))
+weekly_reset  = parse_iso(weekly.get("resets_at"))
+
+if session_pct is not None:
+    result["pct"] = session_pct
+    result["last_success_ts"] = result["ts"]
+    if session_reset is not None:
+        result["reset_ts"] = session_reset
+    if session_pct >= 100:
+        result["rate_limited"] = True
+if weekly_pct is not None:
+    result["weekly_pct"] = weekly_pct
+    if weekly_reset is not None:
+        result["weekly_reset_ts"] = weekly_reset
+    if weekly_pct >= 100:
+        result["rate_limited"] = True
+
+# Partial-reset fallback (mirrors the tmux parser): keep a still-valid prior
+# reset_ts when the API returns pct but null resets_at.
+now_ts = result["ts"]
+if "pct" in result and "reset_ts" not in result and isinstance(prev.get("reset_ts"), (int, float)):
+    v = prev["reset_ts"]
+    if v > now_ts and v - now_ts <= 5*3600 + 1800:
+        result["reset_ts"] = v
+if "weekly_pct" in result and "weekly_reset_ts" not in result and isinstance(prev.get("weekly_reset_ts"), (int, float)):
+    v = prev["weekly_reset_ts"]
+    if v > now_ts:
+        result["weekly_reset_ts"] = v
+
+if "pct" not in result:
+    # API returned 200 but no usable utilization — surface as error, preserve prior.
+    result["error"] = "api_no_data"
+    if "last_success_ts" in prev:
+        result["last_success_ts"] = prev["last_success_ts"]
+    for k in ("pct", "reset_ts", "weekly_pct", "weekly_reset_ts"):
+        if k in prev and k not in result:
+            result[k] = prev[k]
+    result["error_since_ts"] = prev.get("error_since_ts") or prev.get("ts") or now_ts
+
+print(json.dumps(result))
+
+# Append a history row identical in shape to the tmux path, so usage-chart.sh
+# keeps working unchanged. Only on a fully-resolved session window.
+if "pct" in result and "reset_ts" in result:
+    log_file = os.environ.get("USAGE_LOG", "")
+    if log_file:
+        WINDOW_HOURS = 5
+        window_dur = WINDOW_HOURS * 3600
+        window_start = result["reset_ts"] - window_dur
+        elapsed = result["ts"] - window_start
+        window_elapsed_pct = round(min(elapsed / window_dur * 100, 100), 1)
+        budget_delta = round(result["pct"] - window_elapsed_pct, 1)
+        window_id = datetime.fromtimestamp(result["reset_ts"]).strftime("%Y-%m-%dT%H:%M")
+        elapsed_h = elapsed / 3600
+        burn_rate = round(result["pct"] / elapsed_h, 2) if elapsed_h > 0.1 else None
+        entry = {"ts": result["ts"], "pct": result["pct"], "reset_ts": result["reset_ts"],
+                 "window_id": window_id, "window_elapsed_pct": window_elapsed_pct, "budget_delta": budget_delta}
+        if burn_rate is not None:
+            entry["burn_rate"] = burn_rate
+        if "weekly_pct" in result:
+            entry["weekly_pct"] = result["weekly_pct"]
+        if "weekly_reset_ts" in result:
+            wrt = result["weekly_reset_ts"]; entry["weekly_reset_ts"] = wrt
+            entry["weekly_window_id"] = datetime.fromtimestamp(wrt).strftime("%Y-W%W")
+            WEEKLY_DUR = 7 * 24 * 3600
+            w_elapsed = result["ts"] - (wrt - WEEKLY_DUR)
+            entry["weekly_elapsed_pct"] = round(min(w_elapsed / WEEKLY_DUR * 100, 100), 1)
+            entry["weekly_budget_delta"] = round(result["weekly_pct"] - entry["weekly_elapsed_pct"], 1)
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        with open(log_file, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+# <<< API_PARSE_END
+')
+    local rc=$?
+    # A non-zero python exit (rare: interpreter crash) or an out without "pct"
+    # AND with an error means the API path did not yield a usable reading; fall
+    # back to tmux only when we got NO usable figure at all.
+    if [ $rc -ne 0 ] || [ -z "$out" ]; then
+      return 1
+    fi
+    if ! printf '%s' "$out" | python3 -c 'import sys,json; sys.exit(0 if "pct" in json.load(sys.stdin) else 1)' 2>/dev/null; then
+      return 1
+    fi
+    printf '%s\n' "$out" > "$USAGE_FILE"
+    return 0
+  }
+
   claude_is_running() {
     # Positive detection: Claude Code is running iff
     #   (a) the pane's foreground command is NOT a plain shell, AND
@@ -292,6 +476,32 @@ except: print(); print(); print(); print(); print(); print(); print(); print()
   # so this costs ~4s of startup per poll, not tokens; the poll interval is widened
   # to 5min to match. Starting fresh also bounds any userland RSS leak to one poll,
   # making the old lifetime-cap and stale-data watchdog redundant.
+  # Try the OAuth usage endpoint first. On success this writes USAGE_FILE +
+  # USAGE_LOG and we are done — no claude/tmux needed. Any failure falls through
+  # to the tmux-parse path below, which is unchanged.
+  if try_api_poll; then
+    # Emit the same human-readable summary the tmux path prints, then stop.
+    python3 -c '
+import json, sys, time
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("claude-usage: could not read result"); sys.exit(0)
+acct = d.get("account") or ""
+prefix = "claude-usage" + ("[" + acct + "]" if acct else "")
+pct = d.get("pct"); wk = d.get("weekly_pct"); rt = d.get("reset_ts")
+if pct is not None:
+    msg = prefix + ": session " + str(pct) + "% used"
+    if wk is not None: msg += ", weekly " + str(wk) + "% used"
+    if rt: msg += ", resets in " + str(max(0, int((rt - time.time()) // 60))) + "m"
+    msg += "  [via api]"
+    print(msg)
+else:
+    print(prefix + ": no data [via api]")
+' "$USAGE_FILE"
+    return 0
+  fi
+
   $TMUX_BIN kill-session -t "$SESSION" 2>/dev/null
 
   # --- Phase: session ---
